@@ -1,24 +1,19 @@
-import * as SecureStore from "expo-secure-store";
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type PropsWithChildren,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-export const ACCESS_TOKEN_KEY = "alibhai-points.access-token";
-
-type AuthStatus = "restoring" | "signed-in" | "signed-out";
+export type DemoRole = "customer" | "admin";
 
 type AuthContextValue = {
-  status: AuthStatus;
-  pendingRegistrationToken: string | null;
-  setPendingRegistrationToken: (token: string | null) => void;
-  signIn: (token: string) => Promise<void>;
+  role: DemoRole | null;
+  status: "signed-in" | "signed-out";
+  enterDemo: (role: DemoRole) => void;
   signOut: () => Promise<void>;
 };
 
@@ -26,51 +21,28 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<AuthStatus>("restoring");
-  const [pendingRegistrationToken, setPendingRegistrationToken] = useState<
-    string | null
-  >(null);
+  const [role, setRole] = useState<DemoRole | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    SecureStore.getItemAsync(ACCESS_TOKEN_KEY)
-      .then((token) => {
-        if (active) setStatus(token ? "signed-in" : "signed-out");
-      })
-      .catch(() => {
-        if (active) setStatus("signed-out");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const signIn = useCallback(
-    async (token: string) => {
-      await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
-      setPendingRegistrationToken(null);
+  const enterDemo = useCallback(
+    (nextRole: DemoRole) => {
       queryClient.clear();
-      setStatus("signed-in");
+      setRole(nextRole);
     },
     [queryClient],
   );
-
   const signOut = useCallback(async () => {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-    setPendingRegistrationToken(null);
     queryClient.clear();
-    setStatus("signed-out");
+    setRole(null);
   }, [queryClient]);
 
   const value = useMemo(
     () => ({
-      status,
-      pendingRegistrationToken,
-      setPendingRegistrationToken,
-      signIn,
+      role,
+      status: role ? "signed-in" : "signed-out",
+      enterDemo,
       signOut,
     }),
-    [status, pendingRegistrationToken, signIn, signOut],
+    [role, enterDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
