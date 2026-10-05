@@ -1,0 +1,41 @@
+14. Admin Dashboard
+Admin web dashboard should prioritize speed. The most important workflow is: enter Customer ID → enter purchase
+amount → see calculated points → add purchase.
+Dashboard metrics: total customers, active/inactive customers, points issued, redeemable points, redeemed points,
+today's transactions and purchase value.
+Customer table: ID, name, phone, points, status, last transaction and actions.
+Customer details: ID, name, phone, status, current/redeemable/pending points, last transaction and activity deadline;
+tabs for overview, purchases, points and redemptions.
+Admin must never manually enter final points; backend calculates them.
+Use protected admin routes and never expose service-role keys.
+15. Admin Frontend Prompt
+Build the complete React + TypeScript admin dashboard for Alibhai Points.
+This is a loyalty/points management system, NOT ecommerce.
+Tech:
+React, TypeScript, Tailwind CSS, TanStack Query, Axios, React Hook Form, Zod, Lucide.
+Brand:
+#7A1F2B maroon, #242424 dark, #777777 grey, #F3F3F3 light grey, #FAFAFA background, #FFFFFF white.
+Avoid excessive red/black.
+Pages:
+Login, Dashboard, Customers, Customer Details, Record Purchase, Purchases, Redemptions, Redemption Details, Point Rules, AudiDashboard:
+Total Customers, Active, Inactive, Points Issued, Redeemable, Redeemed, Today's Transactions, Today's Purchase Value.
+Customers:
+Search by ID/phone/name, status filters, pagination.
+Record Purchase:
+Customer ID + purchase amount. Fetch customer, display name/status, submit amount to backend, display backend-calculated poinPurchases:
+Customer, ID, amount, points, date, recorded by.
+Redemptions:
+Customer, ID, points, reference, status, date, processed by.
+Point Rules:
+Show TZS 1,000 = 1 point, 90-day redemption wait and 25-day activity period. Authorized admins can change future rules withouAudit logs:
+Admin, action, customer/entity, description, date.
+Use protected routes, loading states, errors, confirmation dialogs, toast messages, pagination and responsive layout.
+Admin should be able to record a purchase in under 15 seconds.
+16. Suggested Customer Home Layout
+Good morning, Ibrahim ■
+Customer ID: IS01
+YOUR POINTS: 850
+Redeemable: 500 points | Pending: 350 points
+■ Active — 12 days until activity deadline
+Primary action: Redeem Points
+Recent Activity: +50 points — Purchase — TZS 50,000 — Today
