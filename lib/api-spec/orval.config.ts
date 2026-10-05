@@ -34,8 +34,8 @@ export default defineConfig({
           includeHttpResponseReturnType: false,
         },
         mutator: {
-          path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
-          name: "customFetch",
+          path: path.resolve(apiClientReactSrc, "axios-fetch.ts"),
+          name: "axiosFetch",
         },
       },
     },

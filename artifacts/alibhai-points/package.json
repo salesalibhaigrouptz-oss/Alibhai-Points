@@ -53,5 +53,10 @@
     "typescript": "~6.0.3",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.10.0",
+    "expo-secure-store": "~57.0.4",
+    "react-hook-form": "^7.87.0"
   }
 }

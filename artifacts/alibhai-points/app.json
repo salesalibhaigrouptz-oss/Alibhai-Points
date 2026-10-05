@@ -6,7 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "alibhai-points",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#FAFAFA",
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain"
+    },
     "ios": {
       "supportsTablet": false
     },

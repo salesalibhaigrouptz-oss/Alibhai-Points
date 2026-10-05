@@ -1,0 +1,1 @@
+- [Filtered workspace installs](pnpm-workspace-install.md) — use pnpm's workspace filter when the package helper targets root or rejects `--filter`.
