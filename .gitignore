@@ -5,11 +5,15 @@ dist
 tmp
 out-tsc
 *.tsbuildinfo
+
+# Expo
 .expo
 .expo-shared
+.expo-shared/**/*
 
 # dependencies
 node_modules
+**/node_modules
 
 # IDEs and editors
 /.idea
@@ -41,6 +45,27 @@ testem.log
 .DS_Store
 Thumbs.db
 
+# React Native / Expo build files
+.expo/
+.expo-shared/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+android/app/build
+ios/build
+*.xcworkspace
+*.xcuserstate
+ios/Pods
+ios/.xcode.env.local
+web-build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Cursor rules
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
