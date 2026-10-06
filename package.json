@@ -7,6 +7,10 @@
     "mobile:start": "cd apps/mobile && npm start",
     "mobile:android": "cd apps/mobile && npm run android",
     "mobile:ios": "cd apps/mobile && npm run ios",
-    "mobile:web": "cd apps/mobile && npm run web"
+    "mobile:web": "cd apps/mobile && npm run web",
+    "api:dev": "cd apps/api && npm run dev",
+    "api:test": "cd apps/api && npm test",
+    "api:build": "cd apps/api && npm run build",
+    "api:start": "cd apps/api && npm start"
   }
 }

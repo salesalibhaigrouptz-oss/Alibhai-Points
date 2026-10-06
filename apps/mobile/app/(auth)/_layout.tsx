@@ -5,7 +5,7 @@ import { useAuth } from "@/services/auth-context";
 
 export default function AuthLayout() {
   const colors = useColors();
-  const { status } = useAuth();
+  const { status, role } = useAuth();
   if (status === "restoring") {
     return (
       <View
@@ -21,6 +21,9 @@ export default function AuthLayout() {
     );
   }
   if (status === "signed-in") {
+    if (role === "admin") {
+      return <Redirect href={"/admin/dashboard" as any} />;
+    }
     return <Redirect href="/(tabs)" />;
   }
   return (

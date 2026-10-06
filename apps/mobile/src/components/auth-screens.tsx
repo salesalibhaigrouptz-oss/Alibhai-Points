@@ -16,6 +16,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,7 +38,13 @@ import {
   verifyWhatsAppOtp,
   maskPhoneNumber,
 } from "@/services/supabase";
-import { fetchMe, formatOtpError } from "@/services/api";
+import {
+  fetchMe,
+  completeRegistration,
+  apiErrorMessage,
+  formatOtpError,
+} from "@/services/api";
+import { AUTH_MODE, authService } from "@/services/auth-service";
 
 const useRequestPhoneOtp = () => {
   const [isPending, setIsPending] = useState(false);
@@ -73,15 +80,6 @@ const useVerifyPhoneOtp = () => {
   };
 };
 
-const useCompleteCustomerRegistration = () => ({
-  mutateAsync: async ({
-    data,
-  }: {
-    data: { registrationToken: string; fullName: string };
-  }) => ({ accessToken: `access-token-${Date.now()}` }),
-  isPending: false,
-});
-
 const phoneSchema = z.object({
   phoneNumber: z
     .string()
@@ -102,6 +100,47 @@ const otpSchema = z.object({
     ),
 });
 type OtpValues = z.infer<typeof otpSchema>;
+
+const loginSchema = z.object({
+  phoneNumber: z
+    .string()
+    .trim()
+    .refine((val) => toE164(val) !== null, {
+      message: "Namba au PIN si sahihi",
+    }),
+  pin: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Namba au PIN si sahihi"),
+});
+type LoginValues = z.infer<typeof loginSchema>;
+
+const signupSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(2, "Weka jina kamili (angalau herufi 2) / Enter full name (at least 2 letters)"),
+    phoneNumber: z
+      .string()
+      .trim()
+      .refine((val) => toE164(val) !== null, {
+        message: PHONE_NUMBER_ERROR_MESSAGE,
+      }),
+    pin: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "PIN lazima iwe na tarakimu 6 / PIN must be exactly 6 digits"),
+    confirmPin: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Thibitisha PIN ya tarakimu 6 / Confirm your 6-digit PIN"),
+  })
+  .refine((data) => data.pin === data.confirmPin, {
+    message: "PIN hazilingani / PINs do not match",
+    path: ["confirmPin"],
+  });
+type SignupValues = z.infer<typeof signupSchema>;
 
 const registrationSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
@@ -154,19 +193,383 @@ export function WelcomeScreen() {
         </Card>
       </View>
       <View style={styles.formActions}>
-        <PrimaryButton
-          label="Get started"
-          onPress={() => router.push("/(auth)/phone")}
-          testID="welcome-get-started"
-        />
+        {AUTH_MODE === "pin" ? (
+          <>
+            <PrimaryButton
+              label="Ingia / Log in"
+              onPress={() => router.push("/(auth)/login" as any)}
+              testID="welcome-login"
+            />
+            <PrimaryButton
+              label="Jisajili / Sign up"
+              onPress={() => router.push("/(auth)/signup" as any)}
+              secondary
+              testID="welcome-signup"
+            />
+          </>
+        ) : (
+          <PrimaryButton
+            label="Get started"
+            onPress={() => router.push("/(auth)/phone")}
+            testID="welcome-get-started"
+          />
+        )}
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-          Sign in or create an account with your Tanzanian WhatsApp number.
+          Sign in or create an account with your Tanzanian phone number.
         </Text>
         <Pressable onPress={() => router.push("/admin/login")}>
           <Text style={[styles.adminLink, { color: colors.mutedForeground }]}>
             Admin Login
           </Text>
         </Pressable>
+      </View>
+    </FormFrame>
+  );
+}
+
+export function LoginScreen() {
+  const colors = useColors();
+  const { signIn, setPendingRegistrationToken } = useAuth();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+
+  const { control, handleSubmit, formState } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { phoneNumber: "", pin: "" },
+  });
+
+  const submit = handleSubmit(async ({ phoneNumber, pin }) => {
+    Keyboard.dismiss();
+    setFormError(null);
+    setLoading(true);
+
+    try {
+      // 1. Authenticate with Supabase Auth (phone mapped to email + PIN as password)
+      const authResult = await authService.signInWithPassword({
+        phone: phoneNumber,
+        pin,
+      });
+
+      const accessToken = authResult?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("No session returned");
+      }
+
+      // 2. Call GET /api/me: admin -> admin nav, customer -> customer nav, registered:false -> registration
+      try {
+        const me = await fetchMe(accessToken);
+
+        if (me?.registered === false) {
+          setPendingRegistrationToken(accessToken);
+          router.replace("/(auth)/registration");
+          return;
+        }
+
+        if (me?.role === "admin") {
+          await signIn(accessToken, "admin");
+          router.replace("/admin/dashboard" as any);
+          return;
+        }
+
+        // Customer login
+        await signIn(accessToken, "customer");
+        router.replace("/(tabs)");
+      } catch (meError) {
+        // Fallback to customer navigation if /api/me fails or is registering
+        await signIn(accessToken, "customer");
+        router.replace("/(tabs)");
+      }
+    } catch (error) {
+      // Per spec: Error for a wrong phone or PIN: "Namba au PIN si sahihi"
+      setFormError("Namba au PIN si sahihi");
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  return (
+    <FormFrame>
+      <BrandHeader compact />
+      <PageHeading
+        eyebrow="Alibhai Points"
+        title="Ingia / Log in"
+        description="Weka namba ya simu na PIN yako ya tarakimu 6 kuingia kwenye akaunti yako."
+      />
+
+      <View style={styles.formFields}>
+        <Controller
+          control={control}
+          name="phoneNumber"
+          render={({ field }) => (
+            <TextField
+              label="Namba ya simu / Phone number"
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              autoCapitalize="none"
+              placeholder="07XXXXXXXX au +255XXXXXXXXX"
+              error={formState.errors.phoneNumber?.message}
+              testID="login-phone-input"
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="pin"
+          render={({ field }) => (
+            <TextField
+              label="PIN (tarakimu 6)"
+              value={field.value}
+              onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
+              onBlur={field.onBlur}
+              keyboardType="number-pad"
+              maxLength={6}
+              secureTextEntry={!showPin}
+              placeholder="••••••"
+              error={formState.errors.pin?.message}
+              testID="login-pin-input"
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setShowPin(!showPin)}
+                  style={styles.eyeButton}
+                  accessibilityLabel={showPin ? "Hide PIN" : "Show PIN"}
+                >
+                  <Feather
+                    name={showPin ? "eye-off" : "eye"}
+                    size={20}
+                    color={colors.mutedForeground}
+                  />
+                </TouchableOpacity>
+              }
+            />
+          )}
+        />
+
+        {formError ? <InlineNotice message={formError} tone="warning" /> : null}
+
+        <PrimaryButton
+          label="Ingia / Log in"
+          onPress={submit}
+          loading={loading}
+          testID="login-submit"
+        />
+
+        {/* Specified requirement: line on Login */}
+        <Text style={[styles.forgotPinNotice, { color: colors.mutedForeground }]}>
+          Umesahau PIN? Wasiliana na ofisi / Forgot PIN? Contact the office.
+        </Text>
+
+        <View style={styles.switchAuthRow}>
+          <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
+            Huna akaunti? / Don’t have an account?
+          </Text>
+          <TextButton
+            label="Jisajili / Sign up"
+            onPress={() => router.push("/(auth)/signup" as any)}
+            testID="login-to-signup"
+          />
+        </View>
+
+        <TextButton label="Rudi nyuma / Back" onPress={() => router.back()} />
+      </View>
+    </FormFrame>
+  );
+}
+
+export function SignupScreen() {
+  const colors = useColors();
+  const { signIn } = useAuth();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [showConfirmPin, setShowConfirmPin] = useState(false);
+
+  const { control, handleSubmit, formState } = useForm<SignupValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { fullName: "", phoneNumber: "", pin: "", confirmPin: "" },
+  });
+
+  const submit = handleSubmit(async ({ fullName, phoneNumber, pin }) => {
+    Keyboard.dismiss();
+    setFormError(null);
+    setLoading(true);
+
+    try {
+      // 1. Sign up user in Supabase Auth with fake email + PIN password
+      const signUpResult = await authService.signUp({
+        phone: phoneNumber,
+        pin,
+      });
+
+      let accessToken = signUpResult?.session?.access_token;
+
+      // If signUp doesn't return a session immediately, sign in with the new credentials
+      if (!accessToken) {
+        const signInResult = await authService.signInWithPassword({
+          phone: phoneNumber,
+          pin,
+        });
+        accessToken = signInResult?.session?.access_token;
+      }
+
+      if (!accessToken) {
+        throw new Error(
+          "Imeshindikana kupata session ya akaunti. Tafadhali jaribu kuingia."
+        );
+      }
+
+      // 2. Call POST /api/auth/complete-registration { full_name }
+      await completeRegistration(fullName, accessToken);
+
+      // 3. Mark signed-in and navigate to customer tabs
+      await signIn(accessToken, "customer");
+      router.replace("/(tabs)");
+    } catch (error) {
+      const msg = apiErrorMessage(error);
+      setFormError(
+        msg || "Imeshindikana kusajili akaunti. Tafadhali jaribu tena."
+      );
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  return (
+    <FormFrame>
+      <BrandHeader compact />
+      <PageHeading
+        eyebrow="Akaunti Mpya"
+        title="Jisajili / Sign up"
+        description="Fungua akaunti ya Alibhai Points kuanza kupata na kutumia pointi zako."
+      />
+
+      <View style={styles.formFields}>
+        <Controller
+          control={control}
+          name="fullName"
+          render={({ field }) => (
+            <TextField
+              label="Jina kamili / Full name"
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              autoComplete="name"
+              autoCapitalize="words"
+              placeholder="Mfano: Juma Rashid"
+              error={formState.errors.fullName?.message}
+              testID="signup-name-input"
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="phoneNumber"
+          render={({ field }) => (
+            <TextField
+              label="Namba ya simu / Phone number"
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              autoCapitalize="none"
+              placeholder="07XXXXXXXX au +255XXXXXXXXX"
+              error={formState.errors.phoneNumber?.message}
+              testID="signup-phone-input"
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="pin"
+          render={({ field }) => (
+            <TextField
+              label="PIN ya siri (tarakimu 6)"
+              value={field.value}
+              onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
+              onBlur={field.onBlur}
+              keyboardType="number-pad"
+              maxLength={6}
+              secureTextEntry={!showPin}
+              placeholder="••••••"
+              error={formState.errors.pin?.message}
+              testID="signup-pin-input"
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setShowPin(!showPin)}
+                  style={styles.eyeButton}
+                  accessibilityLabel={showPin ? "Hide PIN" : "Show PIN"}
+                >
+                  <Feather
+                    name={showPin ? "eye-off" : "eye"}
+                    size={20}
+                    color={colors.mutedForeground}
+                  />
+                </TouchableOpacity>
+              }
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="confirmPin"
+          render={({ field }) => (
+            <TextField
+              label="Thibitisha PIN / Confirm PIN"
+              value={field.value}
+              onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
+              onBlur={field.onBlur}
+              keyboardType="number-pad"
+              maxLength={6}
+              secureTextEntry={!showConfirmPin}
+              placeholder="••••••"
+              error={formState.errors.confirmPin?.message}
+              testID="signup-confirmpin-input"
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPin(!showConfirmPin)}
+                  style={styles.eyeButton}
+                  accessibilityLabel={showConfirmPin ? "Hide PIN" : "Show PIN"}
+                >
+                  <Feather
+                    name={showConfirmPin ? "eye-off" : "eye"}
+                    size={20}
+                    color={colors.mutedForeground}
+                  />
+                </TouchableOpacity>
+              }
+            />
+          )}
+        />
+
+        {formError ? <InlineNotice message={formError} tone="warning" /> : null}
+
+        <PrimaryButton
+          label="Jisajili / Sign up"
+          onPress={submit}
+          loading={loading}
+          testID="signup-submit"
+        />
+
+        <View style={styles.switchAuthRow}>
+          <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
+            Una akaunti tayari? / Already have an account?
+          </Text>
+          <TextButton
+            label="Ingia / Log in"
+            onPress={() => router.push("/(auth)/login" as any)}
+            testID="signup-to-login"
+          />
+        </View>
+
+        <TextButton label="Rudi nyuma / Back" onPress={() => router.back()} />
       </View>
     </FormFrame>
   );
@@ -273,7 +676,7 @@ export function OtpScreen() {
   const verifyOtp = useVerifyPhoneOtp();
   const requestOtp = useRequestPhoneOtp();
 
-  const { control, handleSubmit, formState, setValue } = useForm<OtpValues>({
+  const { control, handleSubmit, formState } = useForm<OtpValues>({
     resolver: zodResolver(otpSchema),
     defaultValues: { code: "" },
   });
@@ -460,7 +863,7 @@ export function RegistrationScreen() {
   const colors = useColors();
   const { pendingRegistrationToken, setPendingRegistrationToken, signIn } =
     useAuth();
-  const registerCustomer = useCompleteCustomerRegistration();
+  const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const { control, handleSubmit, formState } = useForm<RegistrationValues>({
     resolver: zodResolver(registrationSchema),
@@ -471,23 +874,23 @@ export function RegistrationScreen() {
     if (!pendingRegistrationToken) return;
     Keyboard.dismiss();
     setFormError(null);
+    setLoading(true);
+
     try {
-      const response = await registerCustomer.mutateAsync({
-        data: {
-          registrationToken: pendingRegistrationToken,
-          fullName,
-        },
-      });
+      await completeRegistration(fullName, pendingRegistrationToken);
+      const token = pendingRegistrationToken;
       setPendingRegistrationToken(null);
-      await signIn(response.accessToken);
+      await signIn(token, "customer");
       router.replace("/(tabs)");
     } catch (error) {
-      setFormError(formatOtpError(error));
+      setFormError(apiErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   });
 
   if (!pendingRegistrationToken) {
-    return <Redirect href="/(auth)/phone" />;
+    return <Redirect href={(AUTH_MODE === "pin" ? "/(auth)/login" : "/(auth)/phone") as any} />;
   }
 
   return (
@@ -520,7 +923,7 @@ export function RegistrationScreen() {
         <PrimaryButton
           label="Create account"
           onPress={submit}
-          loading={registerCustomer.isPending}
+          loading={loading}
           testID="registration-submit"
         />
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
@@ -550,7 +953,7 @@ const styles = StyleSheet.create({
   welcomeNote: { flexDirection: "row", alignItems: "center", gap: 11, padding: 14 },
   noteIcon: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   noteText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  formActions: { gap: 8, marginTop: 4 },
+  formActions: { gap: 12, marginTop: 4 },
   formFields: { gap: 17 },
   legalText: { fontSize: 12, lineHeight: 18 },
   codeInput: { fontSize: 22, letterSpacing: 7, fontWeight: "700" },
@@ -566,5 +969,25 @@ const styles = StyleSheet.create({
   phoneTargetText: {
     fontSize: 15,
     fontWeight: "600",
+  },
+  eyeButton: {
+    padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  forgotPinNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    marginVertical: 4,
+    fontStyle: "italic",
+  },
+  switchAuthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    flexWrap: "wrap",
+    marginTop: 4,
   },
 });

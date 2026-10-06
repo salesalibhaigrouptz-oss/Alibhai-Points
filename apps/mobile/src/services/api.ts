@@ -1,32 +1,111 @@
-import * as SecureStore from "expo-secure-store";
-import { ACCESS_TOKEN_KEY } from "./auth-context";
+import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import { router } from "expo-router";
+import { supabase } from "./supabase";
 
-export { ACCESS_TOKEN_KEY };
+export const ACCESS_TOKEN_KEY = "access_token";
 
-export function configureApiClient(): void {
-  // Mock implementation - configure when backend is ready
-  console.log("API client configured");
+let onUnauthorizedCallback: (() => void) | null = null;
+
+export function setOnUnauthorizedCallback(cb: (() => void) | null): void {
+  onUnauthorizedCallback = cb;
 }
 
-export function getApiBaseUrl(): string | null {
-  // Mock implementation - return actual API URL when backend is ready
-  return null;
+export function getApiBaseUrl(): string {
+  return (
+    process.env.EXPO_PUBLIC_API_URL?.trim() || "http://localhost:5000"
+  ).replace(/\/+$/, "");
+}
+
+/**
+ * Axios client instance configured with Supabase Bearer token and 401 handling.
+ */
+export const apiClient: AxiosInstance = axios.create({
+  baseURL: getApiBaseUrl(),
+  timeout: 15000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Request interceptor: attach Supabase access token
+apiClient.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        config.headers.set(
+          "Authorization",
+          `Bearer ${session.access_token}`
+        );
+      }
+    } catch {
+      // Continue without token if session retrieval fails
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor: on 401 sign out and redirect to Login
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error?.response?.status === 401) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Ignore signout error
+      }
+
+      if (onUnauthorizedCallback) {
+        try {
+          onUnauthorizedCallback();
+        } catch {}
+      }
+
+      try {
+        router.replace("/(auth)/login" as any);
+      } catch {}
+    }
+    return Promise.reject(error);
+  }
+);
+
+export function configureApiClient(): void {
+  // Configured statically with axios instance
 }
 
 export function apiErrorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "status" in error) {
-    const status = (error as { status?: unknown }).status;
-    if (status === 404) {
-      return "The Alibhai customer API is not connected yet. Your account data has not been replaced with sample information.";
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (data && typeof data === "object") {
+      // Backend sendError format: { success: false, error: { message, code } }
+      if ("error" in data && typeof (data as any).error === "object") {
+        const errObj = (data as any).error;
+        if (errObj?.message) return String(errObj.message);
+      }
+      if ("message" in data) {
+        return String((data as any).message);
+      }
     }
+
+    const status = error.response?.status;
     if (status === 401) {
-      return "Your sign-in has expired. Please sign in again.";
+      return "Kipindi chako kimeisha. Tafadhali ingia tena. / Your session has expired. Please sign in again.";
+    }
+    if (status === 403) {
+      return "Huna ruhusa ya kufanya kitendo hiki. / You do not have permission for this action.";
+    }
+    if (status === 404) {
+      return "Rekodi au huduma haijapatikana. / Record not found.";
     }
     if (status === 409) {
-      return "The server could not complete this request with the current account balance.";
+      return "Hitilafu ya mgongano wa data. / Conflict error.";
     }
     if (status === 429) {
-      return "Majaribio mengi mno. Tafadhali subiri kidogo kisha ujaribu tena. / Too many attempts. Please wait a moment before trying again.";
+      return "Majaribio mengi mno. Tafadhali subiri kidogo kisha ujaribu tena. / Too many attempts. Please wait a moment.";
     }
   }
 
@@ -34,41 +113,81 @@ export function apiErrorMessage(error: unknown): string {
   if (/network error|failed to fetch|network request failed/i.test(message)) {
     return "Hakuna mtandao wa intaneti. Angalia muunganisho wako na ujaribu tena. / No internet connection. Check your connection and try again.";
   }
-  if (/not configured/i.test(message)) {
-    return "The Alibhai customer API address has not been configured.";
-  }
-  return message || "Kuna hitilafu imetokea. Tafadhali jaribu tena. / Something went wrong. Please try again.";
+
+  return (
+    message ||
+    "Kuna hitilafu imetokea. Tafadhali jaribu tena. / Something went wrong. Please try again."
+  );
 }
 
 export type UserProfile = {
-  id: string;
-  role: "customer" | "admin";
   registered: boolean;
-  phoneNumber?: string;
-  fullName?: string;
+  role?: "customer" | "admin";
+  profile?: {
+    id: string;
+    full_name: string;
+    phone: string;
+    role: "customer" | "admin";
+    is_active: boolean;
+    created_at: string;
+  };
+  customer?: {
+    id: string;
+    customer_code: string;
+    initials: string;
+    sequence_number: number;
+    status: string;
+    points_balance: number;
+    last_transaction_at: string | null;
+  } | null;
+  user_id?: string;
+  phone?: string | null;
 };
 
+/**
+ * Calls GET /api/me to retrieve current user info and role.
+ */
 export async function fetchMe(token?: string): Promise<UserProfile> {
-  const baseUrl = getApiBaseUrl();
-  if (baseUrl) {
-    try {
-      const res = await fetch(`${baseUrl}/api/me`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Fallback to default
-    }
-  }
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await apiClient.get<{ success: boolean; data: UserProfile }>(
+    "/api/me",
+    { headers }
+  );
+  return response.data?.data || (response.data as unknown as UserProfile);
+}
 
-  // Mock / default profile
-  return {
-    id: "me",
-    role: "customer",
-    registered: true,
-  };
+/**
+ * Calls POST /api/auth/complete-registration { full_name }
+ */
+export async function completeRegistration(
+  fullName: string,
+  token?: string
+): Promise<{
+  created: boolean;
+  customer_id: string;
+  customer_code: string;
+}> {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await apiClient.post(
+    "/api/auth/complete-registration",
+    { full_name: fullName },
+    { headers }
+  );
+  return response.data?.data || response.data;
+}
+
+/**
+ * Calls POST /api/admin/customers/:customerCode/reset-pin { new_pin }
+ */
+export async function resetCustomerPin(
+  customerCode: string,
+  newPin: string
+): Promise<{ success: boolean; message: string; customer_code: string }> {
+  const response = await apiClient.post(
+    `/api/admin/customers/${encodeURIComponent(customerCode)}/reset-pin`,
+    { new_pin: newPin }
+  );
+  return response.data?.data || response.data;
 }
 
 export function formatOtpError(error: unknown): string {
@@ -150,7 +269,7 @@ export function formatOtpError(error: unknown): string {
 
 export function formatPoints(value: number): string {
   return new Intl.NumberFormat("en-TZ", { maximumFractionDigits: 0 }).format(
-    value,
+    value
   );
 }
 

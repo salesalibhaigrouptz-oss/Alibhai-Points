@@ -203,32 +203,43 @@ export function TextField({
   error,
   inputStyle,
   keyboardType,
+  rightElement,
   ...props
 }: TextInputProps & {
   label: string;
   error?: string;
   inputStyle?: StyleProp<TextStyle>;
   keyboardType?: KeyboardTypeOptions;
+  rightElement?: React.ReactNode;
 }) {
   const colors = useColors();
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{label}</Text>
-      <TextInput
-        {...props}
-        keyboardType={keyboardType}
-        placeholderTextColor={colors.mutedForeground}
+      <View
         style={[
-          styles.input,
+          styles.inputContainer,
           {
             backgroundColor: colors.card,
-            color: colors.foreground,
             borderColor: error ? colors.destructive : colors.input,
           },
-          inputStyle,
         ]}
-        accessibilityLabel={label}
-      />
+      >
+        <TextInput
+          {...props}
+          keyboardType={keyboardType}
+          placeholderTextColor={colors.mutedForeground}
+          style={[
+            styles.inputInner,
+            {
+              color: colors.foreground,
+            },
+            inputStyle,
+          ]}
+          accessibilityLabel={label}
+        />
+        {rightElement}
+      </View>
       {error ? (
         <Text style={[styles.fieldError, { color: colors.destructive }]}>
           {error}
@@ -237,6 +248,7 @@ export function TextField({
     </View>
   );
 }
+
 
 export function Card({
   children,
@@ -408,6 +420,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
   },
+  inputContainer: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 15,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  inputInner: {
+    flex: 1,
+    minHeight: 54,
+    fontSize: 16,
+  },
+
   fieldError: { fontSize: 12, marginTop: -2 },
   card: { padding: 18, borderWidth: 1 },
   notice: {

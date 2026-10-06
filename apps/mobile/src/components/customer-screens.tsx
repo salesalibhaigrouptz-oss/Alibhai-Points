@@ -34,7 +34,17 @@ const formatDate = (date: string) => date;
 const formatPoints = (points: number) => points.toString();
 const formatTzs = (amount: number) => `TZS ${amount.toLocaleString()}`;
 
-const useGetCustomerDashboard = () => ({
+type CustomerRedemption = {
+  id: string;
+  points?: number;
+  status?: string;
+  reference?: string;
+};
+
+const getGetCustomerDashboardQueryKey = () => ['customer-dashboard'];
+const getListCustomerRedemptionsQueryKey = () => ['customer-redemptions'];
+
+const useGetCustomerDashboard = (): any => ({
   data: {
     totalPoints: 850,
     redeemablePoints: 500,
@@ -44,48 +54,67 @@ const useGetCustomerDashboard = () => ({
       customerId: 'IS01',
       phoneNumber: '+255 754 123 456',
       status: 'active',
+      unusedPointsExpired: false,
     },
+    fullName: 'Ibrahim Alibhai',
+    customerId: 'IS01',
+    phoneNumber: '+255 754 123 456',
     status: 'active',
+    unusedPointsExpired: false,
     activityDeadline: '2026-10-17',
     redemptionEligible: true,
     redemptionBlockedReason: null,
+    nextPointsAvailableAt: '2026-11-01',
   },
   isLoading: false,
+  isPending: false,
+  isError: false,
   error: null,
   refetch: () => {},
 });
 
-const useGetCustomerProfile = () => ({
+const useGetCustomerProfile = (): any => ({
   data: {
     customer: {
       fullName: 'Ibrahim Alibhai',
       customerId: 'IS01',
       phoneNumber: '+255 754 123 456',
       status: 'active',
+      unusedPointsExpired: false,
     },
+    fullName: 'Ibrahim Alibhai',
+    customerId: 'IS01',
+    phoneNumber: '+255 754 123 456',
+    status: 'active',
+    unusedPointsExpired: false,
   },
   isLoading: false,
-  error: null,
-});
-
-const useListCustomerTransactions = () => ({
-  data: { items: [] },
-  isLoading: false,
+  isPending: false,
   isError: false,
   error: null,
   refetch: () => {},
 });
 
-const useListCustomerRedemptions = () => ({
+const useListCustomerTransactions = (): any => ({
   data: { items: [] },
   isLoading: false,
+  isPending: false,
   isError: false,
   error: null,
   refetch: () => {},
 });
 
-const useCreateCustomerRedemption = () => ({
-  mutateAsync: async () => ({ id: 'R001' }),
+const useListCustomerRedemptions = (): any => ({
+  data: { items: [] },
+  isLoading: false,
+  isPending: false,
+  isError: false,
+  error: null,
+  refetch: () => {},
+});
+
+const useCreateCustomerRedemption = (): any => ({
+  mutateAsync: async (_params?: any) => ({ id: 'R001' }),
   isPending: false,
 });
 

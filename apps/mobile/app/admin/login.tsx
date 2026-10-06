@@ -1,32 +1,87 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/services/auth-context';
+import { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useAuth } from "@/services/auth-context";
+import { supabase } from "@/services/supabase";
+import { phoneToEmail, toE164 } from "@/utils/phone";
+import { fetchMe, apiErrorMessage } from "@/services/api";
 
 export default function AdminLogin() {
   const router = useRouter();
-  const { enterDemo } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const { signIn } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Please enter username and password');
+    const trimmedUser = username.trim();
+    const trimmedPass = password.trim();
+
+    if (!trimmedUser || !trimmedPass) {
+      Alert.alert("Hitilafu / Error", "Tafadhali weka namba/barua pepe na nenosiri / Please enter username/phone and password/PIN");
       return;
     }
 
     setLoading(true);
 
-    // Mock admin credentials - in production, this would call backend API
-    if (username === 'admin' && password === 'admin123') {
-      enterDemo('admin');
-      router.replace('/admin/dashboard' as any);
-    } else {
-      Alert.alert('Error', 'Invalid credentials');
-    }
+    try {
+      // If user provided an email directly, use it; otherwise convert phone to email
+      let email = trimmedUser;
+      if (!trimmedUser.includes("@")) {
+        const normalized = toE164(trimmedUser);
+        if (!normalized) {
+          Alert.alert("Hitilafu / Error", "Namba ya simu au barua pepe si sahihi / Invalid phone number or email");
+          setLoading(false);
+          return;
+        }
+        email = phoneToEmail(trimmedUser);
+      }
 
-    setLoading(false);
+      // Authenticate via Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: trimmedPass,
+      });
+
+      if (error || !data.session?.access_token) {
+        Alert.alert(
+          "Hitilafu / Error",
+          "Namba/Barua pepe au PIN si sahihi / Invalid credentials"
+        );
+        setLoading(false);
+        return;
+      }
+
+      const accessToken = data.session.access_token;
+
+      // Verify role via GET /api/me
+      const me = await fetchMe(accessToken);
+
+      if (me.role !== "admin") {
+        await supabase.auth.signOut();
+        Alert.alert(
+          "Ufikiaji Umekataliwa / Access Denied",
+          "Akaunti hii haina ruhusa ya Admin / This account does not have admin permissions."
+        );
+        setLoading(false);
+        return;
+      }
+
+      await signIn(accessToken, "admin");
+      router.replace("/admin/dashboard" as any);
+    } catch (err) {
+      Alert.alert("Hitilafu / Error", apiErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,21 +92,23 @@ export default function AdminLogin() {
 
         <TextInput
           style={styles.input}
-          placeholder="Username"
+          placeholder="Namba ya simu au Barua pepe / Phone or Email"
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
           autoCorrect={false}
+          placeholderTextColor="#999999"
         />
 
         <TextInput
           style={styles.input}
-          placeholder="Password"
+          placeholder="PIN au Nenosiri / PIN or Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
+          placeholderTextColor="#999999"
         />
 
         <TouchableOpacity
@@ -59,16 +116,19 @@ export default function AdminLogin() {
           onPress={handleLogin}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Logging in...' : 'Login'}
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>Login</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          disabled={loading}
         >
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>Rudi / Back</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -78,15 +138,15 @@ export default function AdminLogin() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
-    justifyContent: 'center',
+    backgroundColor: "#FAFAFA",
+    justifyContent: "center",
     padding: 20,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 24,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -94,43 +154,44 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#7A1F2B',
+    fontWeight: "bold",
+    color: "#7A1F2B",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#777777',
+    color: "#777777",
     marginBottom: 32,
   },
   input: {
-    backgroundColor: '#F3F3F3',
+    backgroundColor: "#F3F3F3",
     borderRadius: 8,
     padding: 16,
     marginBottom: 16,
     fontSize: 16,
+    color: "#242424",
   },
   button: {
-    backgroundColor: '#7A1F2B',
+    backgroundColor: "#7A1F2B",
     borderRadius: 8,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 8,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   backButton: {
     marginTop: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   backButtonText: {
-    color: '#777777',
+    color: "#777777",
     fontSize: 14,
   },
 });
