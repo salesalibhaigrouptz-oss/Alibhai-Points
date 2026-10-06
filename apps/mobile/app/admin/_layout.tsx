@@ -8,7 +8,7 @@ export default function AdminLayout() {
 
   // Allow login screen to be accessible without auth
   if (currentRoute !== 'login' && role !== 'admin') {
-    return <Redirect href="/admin/login" as any />;
+    return <Redirect href={"/admin/login" as any} />;
   }
 
   return (

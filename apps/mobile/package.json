@@ -55,6 +55,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@supabase/supabase-js": "^2.117.2",
     "expo-secure-store": "~57.0.4",
     "react-hook-form": "^7.87.0"
   }

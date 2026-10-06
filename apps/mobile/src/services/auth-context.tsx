@@ -11,15 +11,16 @@ import { useQueryClient } from "@tanstack/react-query";
 export const ACCESS_TOKEN_KEY = "access_token";
 
 export type DemoRole = "customer" | "admin";
+export type AuthStatus = "signed-in" | "signed-out" | "restoring";
 
 type AuthContextValue = {
   role: DemoRole | null;
-  status: "signed-in" | "signed-out";
+  status: AuthStatus;
   enterDemo: (role: DemoRole) => void;
   signOut: () => Promise<void>;
   pendingRegistrationToken: string | null;
   setPendingRegistrationToken: (token: string | null) => void;
-  signIn: (token: string) => Promise<void>;
+  signIn: (token: string, userRole?: DemoRole) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -37,9 +38,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [queryClient],
   );
 
-  const signIn = useCallback(async (token: string) => {
+  const signIn = useCallback(async (token: string, userRole?: DemoRole) => {
     // Mock implementation - in production, this would validate the token
-    setRole('customer');
+    setRole(userRole || 'customer');
   }, []);
 
   const signOut = useCallback(async () => {

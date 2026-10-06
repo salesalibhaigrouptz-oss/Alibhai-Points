@@ -10,7 +10,7 @@ export default function IndexRoute() {
 
   if (status === "signed-in") {
     if (role === "admin") {
-      return <Redirect href="/admin/dashboard" as any />;
+      return <Redirect href={"/admin/dashboard" as any} />;
     }
     return <Redirect href="/(tabs)" />;
   }

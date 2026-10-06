@@ -6,11 +6,12 @@ import {
   router,
   useLocalSearchParams,
 } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
   Keyboard,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -30,30 +31,64 @@ import {
   TextButton,
   TextField,
 } from "@/components/primitives";
+import { toE164, PHONE_NUMBER_ERROR_MESSAGE } from "@/utils/phone";
+import {
+  sendWhatsAppOtp,
+  verifyWhatsAppOtp,
+  maskPhoneNumber,
+} from "@/services/supabase";
+import { fetchMe, formatOtpError } from "@/services/api";
 
-// Mock API functions - replace with actual API calls when backend is ready
-const useRequestPhoneOtp = () => ({
-  mutateAsync: async () => ({ challengeId: 'mock-challenge', maskedPhoneNumber: '+255 *** *** ***' }),
-  isPending: false,
-});
+const useRequestPhoneOtp = () => {
+  const [isPending, setIsPending] = useState(false);
+  return {
+    isPending,
+    mutateAsync: async ({ data }: { data: { phoneNumber: string } }) => {
+      setIsPending(true);
+      try {
+        return await sendWhatsAppOtp(data.phoneNumber);
+      } finally {
+        setIsPending(false);
+      }
+    },
+  };
+};
 
-const useVerifyPhoneOtp = () => ({
-  mutateAsync: async () => ({ status: 'registration_required', registrationToken: 'mock-token' }),
-  isPending: false,
-});
+const useVerifyPhoneOtp = () => {
+  const [isPending, setIsPending] = useState(false);
+  return {
+    isPending,
+    mutateAsync: async ({
+      data,
+    }: {
+      data: { challengeId?: string; phoneNumber: string; code: string };
+    }) => {
+      setIsPending(true);
+      try {
+        return await verifyWhatsAppOtp(data.phoneNumber, data.code);
+      } finally {
+        setIsPending(false);
+      }
+    },
+  };
+};
 
 const useCompleteCustomerRegistration = () => ({
-  mutateAsync: async () => ({ accessToken: 'mock-access-token' }),
+  mutateAsync: async ({
+    data,
+  }: {
+    data: { registrationToken: string; fullName: string };
+  }) => ({ accessToken: `access-token-${Date.now()}` }),
   isPending: false,
 });
-
-const apiErrorMessage = (error: any) => error?.message || 'An error occurred';
 
 const phoneSchema = z.object({
   phoneNumber: z
     .string()
     .trim()
-    .regex(/^\+[1-9]\d{7,14}$/, "Enter a valid phone number with country code."),
+    .refine((val) => toE164(val) !== null, {
+      message: PHONE_NUMBER_ERROR_MESSAGE,
+    }),
 });
 type PhoneValues = z.infer<typeof phoneSchema>;
 
@@ -61,7 +96,10 @@ const otpSchema = z.object({
   code: z
     .string()
     .trim()
-    .regex(/^\d{4,8}$/, "Enter the verification code sent to your phone."),
+    .regex(
+      /^\d{6}$/,
+      "Weka tarakimu 6 za verification code / Enter the 6-digit verification code."
+    ),
 });
 type OtpValues = z.infer<typeof otpSchema>;
 
@@ -122,7 +160,7 @@ export function WelcomeScreen() {
           testID="welcome-get-started"
         />
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-          Sign in or create an account with your Tanzanian mobile number.
+          Sign in or create an account with your Tanzanian WhatsApp number.
         </Text>
         <Pressable onPress={() => router.push("/admin/login")}>
           <Text style={[styles.adminLink, { color: colors.mutedForeground }]}>
@@ -140,26 +178,32 @@ export function PhoneScreen() {
   const [requestError, setRequestError] = useState<string | null>(null);
   const { control, handleSubmit, formState } = useForm<PhoneValues>({
     resolver: zodResolver(phoneSchema),
-    defaultValues: { phoneNumber: "+255" },
+    defaultValues: { phoneNumber: "" },
   });
 
   const submit = handleSubmit(async ({ phoneNumber }) => {
     Keyboard.dismiss();
     setRequestError(null);
+    const formattedPhone = toE164(phoneNumber);
+    if (!formattedPhone) {
+      setRequestError(PHONE_NUMBER_ERROR_MESSAGE);
+      return;
+    }
     try {
       const response = await requestOtp.mutateAsync({
-        data: { phoneNumber },
+        data: { phoneNumber: formattedPhone },
       });
       router.push({
         pathname: "/(auth)/otp",
         params: {
           challengeId: response.challengeId,
-          phoneNumber,
-          maskedPhoneNumber: response.maskedPhoneNumber,
+          phoneNumber: formattedPhone,
+          maskedPhoneNumber:
+            response.maskedPhoneNumber || maskPhoneNumber(formattedPhone),
         },
       });
     } catch (error) {
-      setRequestError(apiErrorMessage(error));
+      setRequestError(formatOtpError(error));
     }
   });
 
@@ -168,8 +212,8 @@ export function PhoneScreen() {
       <BrandHeader compact />
       <PageHeading
         eyebrow="Sign in or join"
-        title="Your phone number"
-        description="We’ll send a one-time code to verify it’s you."
+        title="Your WhatsApp number"
+        description="We’ll send a WhatsApp verification code to verify it’s you."
       />
       <View style={styles.formFields}>
         <Controller
@@ -177,19 +221,22 @@ export function PhoneScreen() {
           name="phoneNumber"
           render={({ field }) => (
             <TextField
-              label="Mobile number"
+              label="Namba ya WhatsApp / WhatsApp number"
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               keyboardType="phone-pad"
               autoComplete="tel"
               autoCapitalize="none"
-              placeholder="+255 7XX XXX XXX"
+              placeholder="07XXXXXXXX au +255XXXXXXXXX"
               error={formState.errors.phoneNumber?.message}
               testID="phone-number-input"
             />
           )}
         />
+        <Text style={[styles.legalText, { color: colors.mutedForeground, marginTop: -8 }]}>
+          Code itatumwa kwa WhatsApp / The code will be sent on WhatsApp
+        </Text>
         {requestError ? <InlineNotice message={requestError} tone="warning" /> : null}
         <PrimaryButton
           label="Send verification code"
@@ -200,7 +247,7 @@ export function PhoneScreen() {
         <TextButton label="Back" onPress={() => router.back()} />
       </View>
       <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-        By continuing, you agree to receive a one-time verification message.
+        By continuing, you agree to receive a one-time verification code on WhatsApp.
       </Text>
     </FormFrame>
   );
@@ -217,59 +264,104 @@ export function OtpScreen() {
     typeof params.phoneNumber === "string" ? params.phoneNumber : "";
   const routeChallengeId =
     typeof params.challengeId === "string" ? params.challengeId : "";
-  const maskedPhone =
-    typeof params.maskedPhoneNumber === "string"
-      ? params.maskedPhoneNumber
-      : phoneNumber;
   const [challengeId, setChallengeId] = useState(routeChallengeId);
   const [formError, setFormError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(60);
+  const isSubmittingRef = useRef(false);
+
   const { setPendingRegistrationToken, signIn } = useAuth();
   const verifyOtp = useVerifyPhoneOtp();
   const requestOtp = useRequestPhoneOtp();
-  const { control, handleSubmit, formState } = useForm<OtpValues>({
+
+  const { control, handleSubmit, formState, setValue } = useForm<OtpValues>({
     resolver: zodResolver(otpSchema),
     defaultValues: { code: "" },
   });
 
-  const submit = handleSubmit(async ({ code }) => {
+  // 60-second countdown timer for Resend button
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const interval = setInterval(() => {
+      setCountdown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [countdown]);
+
+  const handleVerifyCode = async (codeToVerify: string) => {
+    if (isSubmittingRef.current || verifyOtp.isPending) return;
+    isSubmittingRef.current = true;
     Keyboard.dismiss();
     setFormError(null);
+
     try {
       const response = await verifyOtp.mutateAsync({
-        data: { challengeId, phoneNumber, code },
+        data: { challengeId, phoneNumber, code: codeToVerify },
       });
-      if (response.status === "authenticated" && response.accessToken) {
-        await signIn(response.accessToken);
-        router.replace("/(tabs)");
-        return;
-      }
+
+      // If registered is false or registration is required, go to RegistrationScreen
       if (
-        response.status === "registration_required" &&
-        response.registrationToken
+        response.status === "registration_required" ||
+        response.registered === false
       ) {
-        setPendingRegistrationToken(response.registrationToken);
+        setPendingRegistrationToken(
+          response.registrationToken || `reg-token-${Date.now()}`
+        );
         router.replace("/(auth)/registration");
         return;
       }
-      setFormError("The verification service returned an incomplete sign-in response.");
+
+      // If registered succeeds: GET /api/me -> admin or customer navigator
+      let destination: "/admin/dashboard" | "/(tabs)" = "/(tabs)";
+      let role: "admin" | "customer" = "customer";
+
+      try {
+        const me = await fetchMe(response.accessToken);
+        if (me?.role === "admin") {
+          role = "admin";
+          destination = "/admin/dashboard";
+        }
+      } catch {
+        // Fallback to customer navigation
+      }
+
+      if (response.accessToken) {
+        await signIn(response.accessToken, role);
+      }
+      router.replace(destination as any);
     } catch (error) {
-      setFormError(apiErrorMessage(error));
+      setFormError(formatOtpError(error));
+    } finally {
+      isSubmittingRef.current = false;
     }
+  };
+
+  const submit = handleSubmit(async ({ code }) => {
+    await handleVerifyCode(code);
   });
 
   const resend = async () => {
+    if (countdown > 0 || requestOtp.isPending) return;
     setFormError(null);
     try {
       const response = await requestOtp.mutateAsync({
         data: { phoneNumber },
       });
       setChallengeId(response.challengeId);
+      setCountdown(60);
     } catch (error) {
-      setFormError(apiErrorMessage(error));
+      setFormError(formatOtpError(error));
     }
   };
 
-  if (!phoneNumber || !challengeId) {
+  const handleOpenWhatsApp = async () => {
+    try {
+      await Linking.openURL("whatsapp://send");
+    } catch {
+      // Ignore errors if WhatsApp is not installed
+    }
+  };
+
+  if (!phoneNumber) {
     return <Redirect href="/(auth)/phone" />;
   }
 
@@ -277,10 +369,21 @@ export function OtpScreen() {
     <FormFrame>
       <BrandHeader compact />
       <PageHeading
-        eyebrow="Phone verification"
-        title="Enter your code"
-        description={`We sent a one-time code to ${maskedPhone}.`}
+        eyebrow="WhatsApp verification"
+        title="Tumekutumia code kwa WhatsApp / We sent you a code on WhatsApp"
+        description=""
       />
+
+      <View style={styles.phoneChangeRow}>
+        <Text style={[styles.phoneTargetText, { color: colors.foreground }]}>
+          {phoneNumber}
+        </Text>
+        <TextButton
+          label="Change number"
+          onPress={() => router.replace("/(auth)/phone")}
+        />
+      </View>
+
       <View style={styles.formFields}>
         <Controller
           control={control}
@@ -289,38 +392,65 @@ export function OtpScreen() {
             <TextField
               label="Verification code"
               value={field.value}
-              onChangeText={(value) => field.onChange(value.replace(/\D/g, ""))}
+              onChangeText={(value) => {
+                const cleaned = value.replace(/\D/g, "").slice(0, 6);
+                field.onChange(cleaned);
+                if (cleaned.length === 6) {
+                  void handleVerifyCode(cleaned);
+                }
+              }}
               onBlur={field.onBlur}
               keyboardType="number-pad"
-              maxLength={8}
+              maxLength={6}
               autoComplete="one-time-code"
               autoCapitalize="none"
-              placeholder="Enter code"
+              placeholder="000000"
               error={formState.errors.code?.message}
               inputStyle={styles.codeInput}
               testID="otp-code-input"
             />
           )}
         />
+
+        <Text style={[styles.legalText, { color: colors.mutedForeground, marginTop: -8 }]}>
+          Hupati code? Hakikisha namba ina WhatsApp.
+        </Text>
+
         {formError ? <InlineNotice message={formError} tone="warning" /> : null}
+
         <PrimaryButton
           label="Verify and continue"
           onPress={submit}
           loading={verifyOtp.isPending}
           testID="otp-submit"
         />
+
         <View style={styles.resendRow}>
           <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
             Didn’t receive a code?
           </Text>
           <TextButton
-            label="Resend"
+            label={
+              countdown > 0
+                ? `Tuma tena / Resend (${countdown}s)`
+                : "Tuma tena / Resend"
+            }
             onPress={() => void resend()}
-            disabled={requestOtp.isPending}
+            disabled={countdown > 0 || requestOtp.isPending}
             testID="otp-resend"
           />
         </View>
-        <TextButton label="Change number" onPress={() => router.replace("/(auth)/phone")} />
+
+        <TextButton
+          label="Fungua WhatsApp"
+          onPress={handleOpenWhatsApp}
+          testID="open-whatsapp-button"
+        />
+
+        <TextButton
+          label="Change number"
+          onPress={() => router.replace("/(auth)/phone")}
+        />
       </View>
     </FormFrame>
   );
@@ -352,7 +482,7 @@ export function RegistrationScreen() {
       await signIn(response.accessToken);
       router.replace("/(tabs)");
     } catch (error) {
-      setFormError(apiErrorMessage(error));
+      setFormError(formatOtpError(error));
     }
   });
 
@@ -426,4 +556,15 @@ const styles = StyleSheet.create({
   codeInput: { fontSize: 22, letterSpacing: 7, fontWeight: "700" },
   resendRow: { flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" },
   adminLink: { fontSize: 14, fontWeight: "600", marginTop: 8, textAlign: "center" },
+  phoneChangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+    marginTop: -12,
+  },
+  phoneTargetText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
