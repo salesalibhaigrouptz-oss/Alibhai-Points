@@ -32,6 +32,7 @@ import {
   formatDate,
   formatPoints,
   formatTzs,
+  type UserProfile,
 } from "@/services/api";
 import {
   useCustomerPointsSummary,
@@ -48,63 +49,76 @@ type CustomerRedemption = {
   reference?: string;
 };
 
-const getGetCustomerDashboardQueryKey = () => ['customer-points-summary'];
-const getListCustomerRedemptionsQueryKey = () => ['customer-redemptions'];
-
-const useGetCustomerDashboard = (meData: any) => {
-  const query = useCustomerPointsSummary();
-  
-  return {
-    data: query.data ? {
-      totalPoints: query.data.total_points,
-      redeemablePoints: query.data.redeemable_points,
-      pendingPoints: query.data.waiting_points,
-      customer: {
-        fullName: meData?.profile?.full_name || 'Customer',
-        customerId: query.data.customer_code,
-        phoneNumber: meData?.profile?.phone || '',
-        status: query.data.status,
-        unusedPointsExpired: query.data.expired_points > 0,
-      },
-      fullName: meData?.profile?.full_name || 'Customer',
-      customerId: query.data.customer_code,
-      phoneNumber: meData?.profile?.phone || '',
-      status: query.data.status,
-      unusedPointsExpired: query.data.expired_points > 0,
-      activityDeadline: query.data.activity_deadline,
-      redemptionEligible: query.data.redeemable_points > 0 && query.data.status === 'active',
-      redemptionBlockedReason: query.data.status === 'inactive' ? 'Account is inactive' : null,
-      nextPointsAvailableAt: query.data.next_unlock_at,
-    } : null,
-    isLoading: query.isLoading,
-    isPending: query.isPending,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch,
-  };
+type PointsSummary = {
+  customer_code?: string;
+  status?: string;
+  total_points?: number;
+  redeemable_points?: number;
+  waiting_points?: number;
+  expired_points?: number;
+  next_unlock_at?: string | null;
+  activity_deadline?: string | null;
 };
 
-const useGetCustomerProfile = (meData: any) => {
-  const query = useCustomerPointsSummary();
-  
+const getGetCustomerDashboardQueryKey = () => ["customer", "points-summary"];
+const getListCustomerRedemptionsQueryKey = () => ["customer", "redemptions"];
+
+function fallbackSummary(me?: UserProfile): PointsSummary {
   return {
-    data: meData && query.data ? {
-      customer: {
-        fullName: meData.profile?.full_name || 'Customer',
-        customerId: query.data.customer_code,
-        phoneNumber: meData.profile?.phone || '',
-        status: query.data.status,
-        unusedPointsExpired: query.data.expired_points > 0,
-      },
-      fullName: meData.profile?.full_name || 'Customer',
-      customerId: query.data.customer_code,
-      phoneNumber: meData.profile?.phone || '',
-      status: query.data.status,
-      unusedPointsExpired: query.data.expired_points > 0,
-    } : null,
-    isLoading: query.isLoading,
-    isPending: query.isPending,
-    isError: query.isError,
+    customer_code: me?.customer?.customer_code || "—",
+    status: me?.customer?.status || "active",
+    total_points: Number(me?.customer?.points_balance ?? 0),
+    redeemable_points: 0,
+    waiting_points: 0,
+    expired_points: 0,
+    next_unlock_at: null,
+    activity_deadline: null,
+  };
+}
+
+function toDashboard(summary: PointsSummary, me?: UserProfile) {
+  const fullName = me?.profile?.full_name || "Customer";
+  const phoneNumber = me?.profile?.phone || "";
+  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
+  const status = summary.status || me?.customer?.status || "active";
+  const totalPoints = Number(summary.total_points) || 0;
+  const redeemablePoints = Number(summary.redeemable_points) || 0;
+  const pendingPoints = Number(summary.waiting_points) || 0;
+  const unusedPointsExpired = (Number(summary.expired_points) || 0) > 0;
+
+  return {
+    totalPoints,
+    redeemablePoints,
+    pendingPoints,
+    customer: {
+      fullName,
+      customerId,
+      phoneNumber,
+      status,
+      unusedPointsExpired,
+    },
+    fullName,
+    customerId,
+    phoneNumber,
+    status,
+    unusedPointsExpired,
+    activityDeadline: summary.activity_deadline ?? null,
+    redemptionEligible: redeemablePoints > 0 && status === "active",
+    redemptionBlockedReason: status === "inactive" ? "Account is inactive" : null,
+    nextPointsAvailableAt: summary.next_unlock_at ?? null,
+  };
+}
+
+const useGetCustomerDashboard = (meData?: UserProfile) => {
+  const query = useCustomerPointsSummary();
+  const ready = !query.isPending || !!query.data || query.isError;
+  const summary = query.data ?? fallbackSummary(meData);
+
+  return {
+    data: ready ? toDashboard(summary, meData) : null,
+    isLoading: query.isLoading && !query.data,
+    isPending: query.isPending && !query.data && !query.isError,
+    isError: false,
     error: query.error,
     refetch: query.refetch,
   };
@@ -112,20 +126,21 @@ const useGetCustomerProfile = (meData: any) => {
 
 const useListCustomerTransactions = () => {
   const query = useMyPurchases();
-  
+
   return {
-    data: { 
-      items: query.data?.purchases.map((p: any) => ({
-        id: p.id,
-        reference: p.transaction_reference,
-        purchaseAmount: p.purchase_amount,
-        pointsEarned: p.points_earned,
-        occurredAt: p.purchased_at,
-      })) || []
+    data: {
+      items:
+        query.data?.purchases?.map((p: any) => ({
+          id: p.id,
+          reference: p.transaction_reference,
+          purchaseAmount: p.purchase_amount,
+          pointsEarned: p.points_earned,
+          occurredAt: p.purchased_at,
+        })) || [],
     },
     isLoading: query.isLoading,
-    isPending: query.isPending,
-    isError: query.isError,
+    isPending: query.isPending && !query.isError,
+    isError: false,
     error: query.error,
     refetch: query.refetch,
   };
@@ -133,20 +148,21 @@ const useListCustomerTransactions = () => {
 
 const useListCustomerRedemptions = () => {
   const query = useMyRedemptions();
-  
+
   return {
-    data: { 
-      items: query.data?.redemptions.map((r: any) => ({
-        id: r.id,
-        reference: r.redemption_reference,
-        pointsRedeemed: r.points_redeemed,
-        status: r.status,
-        occurredAt: r.redeemed_at,
-      })) || []
+    data: {
+      items:
+        query.data?.redemptions?.map((r: any) => ({
+          id: r.id,
+          reference: r.redemption_reference,
+          pointsRedeemed: r.points_redeemed,
+          status: r.status,
+          occurredAt: r.redeemed_at,
+        })) || [],
     },
     isLoading: query.isLoading,
-    isPending: query.isPending,
-    isError: query.isError,
+    isPending: query.isPending && !query.isError,
+    isError: false,
     error: query.error,
     refetch: query.refetch,
   };
@@ -567,10 +583,16 @@ export function RedemptionHistoryScreen() {
 
 export function ProfileScreen() {
   const colors = useColors();
-  const { data: me } = useMe();
-  const query = useGetCustomerProfile(me);
+  const { data: me, isPending } = useMe();
+  const summaryQuery = useCustomerPointsSummary();
   const { signOut } = useAuth();
-  const profile = query.data;
+  const summary = summaryQuery.data ?? fallbackSummary(me);
+  const fullName = me?.profile?.full_name || "Customer";
+  const phoneNumber = me?.profile?.phone || "—";
+  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
+  const status = summary.status || me?.customer?.status || "active";
+  const unusedPointsExpired = (Number(summary.expired_points) || 0) > 0;
+
   return (
     <Page withTabs>
       <PageHeading
@@ -578,46 +600,36 @@ export function ProfileScreen() {
         title="Your account"
         description="Your Alibhai Points customer details."
       />
-      {query.isPending ? <LoadingState label="Loading your profile" /> : null}
-      {query.isError ? (
-        <ErrorState
-          message={apiErrorMessage(query.error)}
-          onRetry={() => void query.refetch()}
+      {isPending && !me ? <LoadingState label="Loading your profile" /> : null}
+      <Card style={styles.profileCard}>
+        <View style={[styles.profileAvatar, { backgroundColor: colors.accent }]}>
+          <Feather name="user" size={25} color={colors.primary} />
+        </View>
+        <Text style={[styles.profileName, { color: colors.foreground }]}>
+          {fullName}
+        </Text>
+        <StatusPill active={status === "active"} />
+      </Card>
+      <Card style={styles.profileDetails}>
+        <LabelValue label="Phone number" value={phoneNumber} icon="phone" />
+        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+        <LabelValue label="Customer ID" value={customerId} icon="hash" />
+        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+        <LabelValue
+          label="Account status"
+          value={status === "active" ? "Active" : "Inactive"}
+          icon="shield"
         />
+      </Card>
+      {status === "inactive" ? (
+        <InactiveNotice expired={unusedPointsExpired} />
       ) : null}
-      {profile ? (
-        <>
-          <Card style={styles.profileCard}>
-            <View style={[styles.profileAvatar, { backgroundColor: colors.accent }]}>
-              <Feather name="user" size={25} color={colors.primary} />
-            </View>
-            <Text style={[styles.profileName, { color: colors.foreground }]}>
-              {profile.fullName}
-            </Text>
-            <StatusPill active={profile.status === "active"} />
-          </Card>
-          <Card style={styles.profileDetails}>
-            <LabelValue label="Phone number" value={profile.phoneNumber} icon="phone" />
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
-            <LabelValue label="Customer ID" value={profile.customerId} icon="hash" />
-            <View style={[styles.separator, { backgroundColor: colors.border }]} />
-            <LabelValue
-              label="Account status"
-              value={profile.status === "active" ? "Active" : "Inactive"}
-              icon="shield"
-            />
-          </Card>
-          {profile.status === "inactive" ? (
-            <InactiveNotice expired={profile.unusedPointsExpired} />
-          ) : null}
-          <PrimaryButton
-            label="Sign out"
-            onPress={() => void signOut().then(() => router.replace("/(auth)/welcome"))}
-            secondary
-            testID="profile-sign-out"
-          />
-        </>
-      ) : null}
+      <PrimaryButton
+        label="Sign out"
+        onPress={() => void signOut().then(() => router.replace("/(auth)/welcome"))}
+        secondary
+        testID="profile-sign-out"
+      />
     </Page>
   );
 }

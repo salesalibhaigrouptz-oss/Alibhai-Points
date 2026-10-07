@@ -48,4 +48,18 @@ router.post(
  */
 router.get("/me/redemptions", authMiddleware, requireCustomer, customerRedemptionsController.listRedemptions.bind(customerRedemptionsController));
 
+/**
+ * Compatibility aliases used by older clients and docs.
+ */
+router.get("/points/summary", authMiddleware, requireCustomer, customerPurchasesController.getPointsSummary.bind(customerPurchasesController));
+router.get("/purchases", authMiddleware, requireCustomer, customerPurchasesController.getCustomerPurchases.bind(customerPurchasesController));
+router.post(
+  "/redemptions",
+  authMiddleware,
+  requireCustomer,
+  validateBody(createRedemptionSchema),
+  customerRedemptionsController.createRedemption.bind(customerRedemptionsController)
+);
+router.get("/redemptions", authMiddleware, requireCustomer, customerRedemptionsController.listRedemptions.bind(customerRedemptionsController));
+
 export default router;

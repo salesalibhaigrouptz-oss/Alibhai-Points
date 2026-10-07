@@ -162,10 +162,10 @@ export class AdminPurchasesController {
           customer_id,
           customers!inner (
             customer_code,
-            initials
-          ),
-          profiles!inner (
-            full_name
+            initials,
+            profiles!inner (
+              full_name
+            )
           )
         `, { count: "exact" })
         .order("purchased_at", { ascending: false })

@@ -643,7 +643,7 @@ export async function getCustomerPointsSummary(): Promise<{
   activity_deadline: string | null;
   days_left: number | null;
 }> {
-  const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/points/summary");
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/me/points");
   return response.data.data;
 }
 
@@ -653,7 +653,10 @@ export async function createCustomerRedemption(points: number): Promise<{
   status: string;
   points: number;
 }> {
-  const response = await apiClient.post<{ success: boolean; data: any }>("/api/customer/redemptions", { points });
+  const response = await apiClient.post<{ success: boolean; data: any }>(
+    "/api/customer/me/redemptions",
+    { points }
+  );
   return response.data.data;
 }
 
@@ -664,14 +667,19 @@ export async function getMyPurchases(params?: {
   purchases: any[];
   pagination: {
     page: number;
-    page_size: number;
+    page_size?: number;
+    limit?: number;
     total: number;
-    total_pages: number;
-    has_next: boolean;
-    has_prev: boolean;
+    total_pages?: number;
+    pages?: number;
+    has_next?: boolean;
+    has_prev?: boolean;
   };
 }> {
-  const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/purchases", { params });
+  const response = await apiClient.get<{ success: boolean; data: any }>(
+    "/api/customer/me/purchases",
+    { params }
+  );
   return response.data.data;
 }
 
@@ -682,13 +690,18 @@ export async function getCustomerRedemptions(params?: {
   redemptions: any[];
   pagination: {
     page: number;
-    page_size: number;
+    page_size?: number;
+    limit?: number;
     total: number;
-    total_pages: number;
-    has_next: boolean;
-    has_prev: boolean;
+    total_pages?: number;
+    pages?: number;
+    has_next?: boolean;
+    has_prev?: boolean;
   };
 }> {
-  const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/redemptions", { params });
+  const response = await apiClient.get<{ success: boolean; data: any }>(
+    "/api/customer/me/redemptions",
+    { params }
+  );
   return response.data.data;
 }

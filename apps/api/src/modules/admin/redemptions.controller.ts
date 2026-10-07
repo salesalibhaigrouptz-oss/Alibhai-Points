@@ -47,11 +47,11 @@ export class AdminRedemptionsController {
           cancel_reason,
           customers!inner (
             customer_code,
-            initials
-          ),
-          profiles!inner (
-            full_name,
-            phone
+            initials,
+            profiles!inner (
+              full_name,
+              phone
+            )
           )
         `, { count: "exact" })
         .order("redeemed_at", { ascending: false })
@@ -120,11 +120,11 @@ export class AdminRedemptionsController {
           cancel_reason,
           customers!inner (
             customer_code,
-            initials
-          ),
-          profiles!inner (
-            full_name,
-            phone
+            initials,
+            profiles!inner (
+              full_name,
+              phone
+            )
           ),
           point_redemption_items (
             id,

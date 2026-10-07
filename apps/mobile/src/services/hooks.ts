@@ -22,7 +22,7 @@ import {
   getReportsSummary,
   getCustomerPointsSummary,
   createCustomerRedemption,
-  getCustomerPurchases as getMyPurchases,
+  getMyPurchases,
   getCustomerRedemptions as getMyRedemptions,
   resetCustomerPin,
 } from "./api";

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { usePointRules, useUpdatePointRules } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
@@ -12,12 +12,12 @@ export default function PointRules() {
   const { data: rules, isLoading, error, refetch } = usePointRules();
   const updateMutation = useUpdatePointRules();
 
-  // Update state when rules load
-  if (rules && editing === false) {
+  useEffect(() => {
+    if (!rules || editing) return;
     setTzsPerPoint(rules.tzsPerPoint.toString());
     setRedemptionWaitDays(rules.redemptionWaitDays.toString());
     setActivityPeriodDays(rules.activityPeriodDays.toString());
-  }
+  }, [rules, editing]);
 
   const handleSave = async () => {
     Alert.alert(

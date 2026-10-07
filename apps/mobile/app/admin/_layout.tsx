@@ -2,13 +2,19 @@ import { Stack, Redirect, useSegments } from 'expo-router';
 import { useAuth } from '@/services/auth-context';
 
 export default function AdminLayout() {
-  const { role } = useAuth();
+  const { role, status } = useAuth();
   const segments = useSegments();
   const currentRoute = segments[segments.length - 1];
 
+  // Show nothing while restoring auth
+  if (status === 'restoring') {
+    return null;
+  }
+
   // Allow login screen to be accessible without auth
-  if (currentRoute !== 'login' && role !== 'admin') {
-    return <Redirect href={"/admin/login" as any} />;
+  // Only redirect if authentication is complete, route is determined, and user is not admin
+  if (currentRoute && currentRoute !== 'login' && status === 'signed-in' && role !== 'admin') {
+    return <Redirect href="/admin/login" />;
   }
 
   return (
