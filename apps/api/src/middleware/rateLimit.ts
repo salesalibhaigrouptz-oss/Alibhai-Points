@@ -37,3 +37,22 @@ export const authLimiter = rateLimit({
     },
   },
 });
+
+/**
+ * Strict rate limiter for admin write operations (POST, PUT, PATCH, DELETE).
+ * 20 requests per 15 minutes in production.
+ * Relaxed in test mode.
+ */
+export const adminWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: env.NODE_ENV === "test" ? 10000 : 20, // 20 admin write requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: "ADMIN_RATE_LIMIT_EXCEEDED",
+      message: "Too many admin operations. Please wait a moment before trying again.",
+    },
+  },
+});

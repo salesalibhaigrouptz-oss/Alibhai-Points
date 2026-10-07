@@ -27,12 +27,19 @@ import {
   TextButton,
   TextField,
 } from "@/components/primitives";
-
-// Mock API functions - replace with actual API calls when backend is ready
-const apiErrorMessage = (error: any) => error?.message || 'An error occurred';
-const formatDate = (date: string) => date;
-const formatPoints = (points: number) => points.toString();
-const formatTzs = (amount: number) => `TZS ${amount.toLocaleString()}`;
+import {
+  apiErrorMessage,
+  formatDate,
+  formatPoints,
+  formatTzs,
+} from "@/services/api";
+import {
+  useCustomerPointsSummary,
+  useCreateCustomerRedemption,
+  useMyPurchases,
+  useMyRedemptions,
+  useMe,
+} from "@/services/hooks";
 
 type CustomerRedemption = {
   id: string;
@@ -41,82 +48,126 @@ type CustomerRedemption = {
   reference?: string;
 };
 
-const getGetCustomerDashboardQueryKey = () => ['customer-dashboard'];
+const getGetCustomerDashboardQueryKey = () => ['customer-points-summary'];
 const getListCustomerRedemptionsQueryKey = () => ['customer-redemptions'];
 
-const useGetCustomerDashboard = (): any => ({
-  data: {
-    totalPoints: 850,
-    redeemablePoints: 500,
-    pendingPoints: 350,
-    customer: {
-      fullName: 'Ibrahim Alibhai',
-      customerId: 'IS01',
-      phoneNumber: '+255 754 123 456',
-      status: 'active',
-      unusedPointsExpired: false,
+const useGetCustomerDashboard = (meData: any) => {
+  const query = useCustomerPointsSummary();
+  
+  return {
+    data: query.data ? {
+      totalPoints: query.data.total_points,
+      redeemablePoints: query.data.redeemable_points,
+      pendingPoints: query.data.waiting_points,
+      customer: {
+        fullName: meData?.profile?.full_name || 'Customer',
+        customerId: query.data.customer_code,
+        phoneNumber: meData?.profile?.phone || '',
+        status: query.data.status,
+        unusedPointsExpired: query.data.expired_points > 0,
+      },
+      fullName: meData?.profile?.full_name || 'Customer',
+      customerId: query.data.customer_code,
+      phoneNumber: meData?.profile?.phone || '',
+      status: query.data.status,
+      unusedPointsExpired: query.data.expired_points > 0,
+      activityDeadline: query.data.activity_deadline,
+      redemptionEligible: query.data.redeemable_points > 0 && query.data.status === 'active',
+      redemptionBlockedReason: query.data.status === 'inactive' ? 'Account is inactive' : null,
+      nextPointsAvailableAt: query.data.next_unlock_at,
+    } : null,
+    isLoading: query.isLoading,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
+};
+
+const useGetCustomerProfile = (meData: any) => {
+  const query = useCustomerPointsSummary();
+  
+  return {
+    data: meData && query.data ? {
+      customer: {
+        fullName: meData.profile?.full_name || 'Customer',
+        customerId: query.data.customer_code,
+        phoneNumber: meData.profile?.phone || '',
+        status: query.data.status,
+        unusedPointsExpired: query.data.expired_points > 0,
+      },
+      fullName: meData.profile?.full_name || 'Customer',
+      customerId: query.data.customer_code,
+      phoneNumber: meData.profile?.phone || '',
+      status: query.data.status,
+      unusedPointsExpired: query.data.expired_points > 0,
+    } : null,
+    isLoading: query.isLoading,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
+};
+
+const useListCustomerTransactions = () => {
+  const query = useMyPurchases();
+  
+  return {
+    data: { 
+      items: query.data?.purchases.map((p: any) => ({
+        id: p.id,
+        reference: p.transaction_reference,
+        purchaseAmount: p.purchase_amount,
+        pointsEarned: p.points_earned,
+        occurredAt: p.purchased_at,
+      })) || []
     },
-    fullName: 'Ibrahim Alibhai',
-    customerId: 'IS01',
-    phoneNumber: '+255 754 123 456',
-    status: 'active',
-    unusedPointsExpired: false,
-    activityDeadline: '2026-10-17',
-    redemptionEligible: true,
-    redemptionBlockedReason: null,
-    nextPointsAvailableAt: '2026-11-01',
-  },
-  isLoading: false,
-  isPending: false,
-  isError: false,
-  error: null,
-  refetch: () => {},
-});
+    isLoading: query.isLoading,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
+};
 
-const useGetCustomerProfile = (): any => ({
-  data: {
-    customer: {
-      fullName: 'Ibrahim Alibhai',
-      customerId: 'IS01',
-      phoneNumber: '+255 754 123 456',
-      status: 'active',
-      unusedPointsExpired: false,
+const useListCustomerRedemptions = () => {
+  const query = useMyRedemptions();
+  
+  return {
+    data: { 
+      items: query.data?.redemptions.map((r: any) => ({
+        id: r.id,
+        reference: r.redemption_reference,
+        pointsRedeemed: r.points_redeemed,
+        status: r.status,
+        occurredAt: r.redeemed_at,
+      })) || []
     },
-    fullName: 'Ibrahim Alibhai',
-    customerId: 'IS01',
-    phoneNumber: '+255 754 123 456',
-    status: 'active',
-    unusedPointsExpired: false,
-  },
-  isLoading: false,
-  isPending: false,
-  isError: false,
-  error: null,
-  refetch: () => {},
-});
+    isLoading: query.isLoading,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
+};
 
-const useListCustomerTransactions = (): any => ({
-  data: { items: [] },
-  isLoading: false,
-  isPending: false,
-  isError: false,
-  error: null,
-  refetch: () => {},
-});
-
-const useListCustomerRedemptions = (): any => ({
-  data: { items: [] },
-  isLoading: false,
-  isPending: false,
-  isError: false,
-  error: null,
-  refetch: () => {},
-});
-
-const useCreateCustomerRedemption = (): any => ({
-  mutateAsync: async (_params?: any) => ({ id: 'R001' }),
-  isPending: false,
-});
+const useCreateRedemption = () => {
+  const mutation = useCreateCustomerRedemption();
+  
+  return {
+    mutateAsync: async (params: any) => {
+      const result = await mutation.mutateAsync(params.data?.points || params);
+      return {
+        id: result.redemption_id,
+        reference: result.reference,
+        status: result.status,
+        points: result.points,
+      };
+    },
+    isPending: mutation.isPending,
+  };
+};
 
 function StatusPill({ active }: { active: boolean }) {
   const colors = useColors();
@@ -289,7 +340,8 @@ function RecordCard({
 
 export function HomeScreen() {
   const colors = useColors();
-  const query = useGetCustomerDashboard();
+  const { data: me } = useMe();
+  const query = useGetCustomerDashboard(me);
   const data = query.data;
 
   return (
@@ -366,7 +418,8 @@ export function HomeScreen() {
 
 export function PointsScreen() {
   const colors = useColors();
-  const query = useGetCustomerDashboard();
+  const { data: me } = useMe();
+  const query = useGetCustomerDashboard(me);
   const data = query.data;
   return (
     <Page withTabs>
@@ -514,7 +567,8 @@ export function RedemptionHistoryScreen() {
 
 export function ProfileScreen() {
   const colors = useColors();
-  const query = useGetCustomerProfile();
+  const { data: me } = useMe();
+  const query = useGetCustomerProfile(me);
   const { signOut } = useAuth();
   const profile = query.data;
   return (
@@ -575,8 +629,9 @@ type RedemptionValues = z.infer<typeof redemptionSchema>;
 
 export function RedeemScreen() {
   const colors = useColors();
-  const dashboard = useGetCustomerDashboard();
-  const redeem = useCreateCustomerRedemption();
+  const { data: me } = useMe();
+  const dashboard = useGetCustomerDashboard(me);
+  const redeem = useCreateRedemption();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [requestedPoints, setRequestedPoints] = useState<number | null>(null);

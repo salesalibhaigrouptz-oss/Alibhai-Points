@@ -1,11 +1,14 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/services/auth-context';
-import { dashboardMetrics } from '@/services/mock-admin-data';
+import { useDashboardMetrics } from '@/services/hooks';
+import { apiErrorMessage } from '@/services/api';
 
 export default function AdminDashboard() {
   const router = useRouter();
   const { signOut } = useAuth();
+  const { data: metrics, isLoading, error, refetch } = useDashboardMetrics();
 
   const handleLogout = () => {
     Alert.alert(
@@ -42,8 +45,29 @@ export default function AdminDashboard() {
     </TouchableOpacity>
   );
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#7A1F2B" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Failed to load dashboard. Tap to retry.</Text>
+        <TouchableOpacity onPress={() => refetch()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} refreshControl={
+      <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+    }>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Admin Dashboard</Text>
@@ -59,35 +83,64 @@ export default function AdminDashboard() {
         <View style={styles.metricsGrid}>
           <MetricCard
             title="Total Customers"
-            value={dashboardMetrics.totalCustomers}
+            value={metrics?.customers?.total || 0}
             color="#7A1F2B"
           />
           <MetricCard
             title="Active Customers"
-            value={dashboardMetrics.activeCustomers}
-            subtitle={`${dashboardMetrics.inactiveCustomers} inactive`}
+            value={metrics?.customers?.active || 0}
+            subtitle={`${metrics?.customers?.inactive || 0} inactive`}
             color="#242424"
           />
           <MetricCard
+            title="Near Deadline"
+            value={metrics?.customers?.near_deadline || 0}
+            subtitle="within 5 days"
+            color="#F57C00"
+          />
+          <MetricCard
             title="Points Issued"
-            value={dashboardMetrics.pointsIssued}
+            value={metrics?.points?.total_issued || 0}
             color="#7A1F2B"
           />
           <MetricCard
             title="Redeemable Points"
-            value={dashboardMetrics.redeemablePoints}
+            value={metrics?.points?.redeemable || 0}
             color="#242424"
+          />
+          <MetricCard
+            title="Waiting Points"
+            value={metrics?.points?.waiting || 0}
+            subtitle="not yet redeemable"
+            color="#F57C00"
           />
           <MetricCard
             title="Redeemed Points"
-            value={dashboardMetrics.redeemedPoints}
+            value={metrics?.points?.redeemed || 0}
             color="#7A1F2B"
           />
           <MetricCard
-            title="Today's Transactions"
-            value={dashboardMetrics.todayTransactions}
-            subtitle={`TZS ${dashboardMetrics.todayPurchaseValue.toLocaleString()}`}
+            title="Expired Points"
+            value={metrics?.points?.expired || 0}
+            color="#C62828"
+          />
+          <MetricCard
+            title="Today's Purchases"
+            value={metrics?.purchases?.today?.count || 0}
+            subtitle={`TZS ${(metrics?.purchases?.today?.value || 0).toLocaleString()}`}
             color="#242424"
+          />
+          <MetricCard
+            title="This Month"
+            value={metrics?.purchases?.this_month?.count || 0}
+            subtitle={`TZS ${(metrics?.purchases?.this_month?.value || 0).toLocaleString()}`}
+            color="#7A1F2B"
+          />
+          <MetricCard
+            title="Pending Requests"
+            value={metrics?.redemptions?.pending_count || 0}
+            subtitle="redemptions"
+            color="#F57C00"
           />
         </View>
       </View>
@@ -191,6 +244,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    minHeight: 100,
   },
   metricTitle: {
     fontSize: 12,
@@ -235,5 +289,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#242424',
     textAlign: 'center',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#777777',
+    marginBottom: 16,
+  },
+  retryText: {
+    fontSize: 16,
+    color: '#7A1F2B',
+    fontWeight: '600',
   },
 });

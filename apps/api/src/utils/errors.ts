@@ -36,24 +36,24 @@ export const DB_ERROR_MAP: Record<string, { status: number; message: string }> =
     message: "A reason is required to void this transaction.",
   },
   CUSTOMER_INACTIVE: {
-    status: 400,
-    message: "Customer is inactive due to past deadline.",
+    status: 409,
+    message: "Customer is inactive due to past deadline. Mteja hana shughuli kwa muda mrefu.",
   },
   INSUFFICIENT_REDEEMABLE_POINTS: {
-    status: 400,
-    message: "Insufficient redeemable points available.",
+    status: 409,
+    message: "Insufficient redeemable points available. Huna point za kutosha za kutumia.",
   },
   PENDING_REQUEST_EXISTS: {
-    status: 400,
-    message: "A pending redemption request already exists for this customer.",
+    status: 409,
+    message: "A pending redemption request already exists for this customer. Tayari una ombi la kutumia point.",
   },
   REDEMPTION_ALREADY_CANCELLED: {
-    status: 400,
-    message: "This redemption has already been cancelled.",
+    status: 409,
+    message: "This redemption has already been cancelled. Ombi hili tayari limefutwa.",
   },
   REDEMPTION_NOT_PENDING: {
-    status: 400,
-    message: "This redemption request is not pending.",
+    status: 409,
+    message: "This redemption request is not pending. Ombi hili halipo kwenye hali ya kusubiri.",
   },
   POINTS_ALREADY_USED_OR_EXPIRED: {
     status: 400,

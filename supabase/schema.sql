@@ -609,7 +609,35 @@ begin
                       else 0 end);
 end $$;
 
--- 4.11 Daily job: expire points of every overdue customer
+-- 4.11 Preview a purchase (no data saved)
+create or replace function public.preview_purchase(
+  p_customer_code text, p_amount numeric)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_c      public.customers%rowtype;
+  v_p      public.profiles%rowtype;
+  v_rule   public.point_rules%rowtype;
+  v_points integer;
+begin
+  if p_amount is null or p_amount <= 0 then raise exception 'INVALID_AMOUNT'; end if;
+  select * into v_c from public.customers
+   where customer_code = upper(trim(p_customer_code));
+  if not found then raise exception 'CUSTOMER_NOT_FOUND'; end if;
+  select * into v_p from public.profiles where id = v_c.profile_id;
+  if not found then raise exception 'CUSTOMER_NOT_FOUND'; end if;
+  select * into v_rule from public.point_rules where is_active;
+  if not found then raise exception 'NO_ACTIVE_RULE'; end if;
+  v_points := floor(p_amount / v_rule.amount_per_point);
+  return jsonb_build_object(
+    'ok', true,
+    'customer_name', v_p.full_name,
+    'customer_status', v_c.status,
+    'points_earned', v_points,
+    'amount_per_point', v_rule.amount_per_point
+  );
+end $$;
+
+-- 4.12 Daily job: expire points of every overdue customer
 create or replace function public.expire_overdue_customers(p_now timestamptz default now())
 returns integer language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -628,10 +656,27 @@ begin
   return v_n;
 end $$;
 
--- Schedule it every day at 00:05 East Africa Time (21:05 UTC) with pg_cron:
+-- ---------------------------------------------------------------------
+-- EXPIRY JOB SCHEDULING
+-- ---------------------------------------------------------------------
+-- The expire_overdue_customers function should be run daily to:
+-- - Check all active customers for inactivity
+-- - Expire points for customers who haven't made a purchase within the inactivity period
+-- - Set customer status to inactive
+-- - Cancel any pending redemption requests
+--
+-- METHOD 1: pg_cron (Recommended for Supabase)
+-- Run this once in the Supabase SQL editor:
 --   create extension if not exists pg_cron;
 --   select cron.schedule('expire-overdue-customers', '5 21 * * *',
 --                        'select public.expire_overdue_customers()');
+--
+-- This schedules the job to run daily at 21:05 UTC (00:05 East Africa Time)
+--
+-- METHOD 2: External Script (Alternative)
+-- Run: npm run expiry
+-- Or schedule with cron/systemd/Task Scheduler
+-- See: apps/api/scripts/run-expiry.ts
 
 -- ---------------------------------------------------------------------
 -- 5. FUNCTION PERMISSIONS: only the backend (service_role) may call them

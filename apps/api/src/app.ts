@@ -14,7 +14,21 @@ export function createApp(): Express {
   const app = express();
 
   // Security Headers
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  }));
 
   // CORS Configuration
   const corsOrigins =
@@ -28,15 +42,16 @@ export function createApp(): Express {
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+      maxAge: 86400, // 24 hours
     })
   );
 
   // Request ID generator
   app.use(requestId);
 
-  // Body parsers
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Body parsers with size limit
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
   // HTTP Request Logging with Pino (silenced during unit/integration tests)
   if (env.NODE_ENV !== "test") {
@@ -48,6 +63,16 @@ export function createApp(): Express {
           if (res.statusCode >= 500 || err) return "error";
           if (res.statusCode >= 400) return "warn";
           return "info";
+        },
+        serializers: {
+          req: (req) => ({
+            method: req.method,
+            url: req.url,
+            id: req.id,
+          }),
+          res: (res) => ({
+            statusCode: res.statusCode,
+          }),
         },
       })
     );

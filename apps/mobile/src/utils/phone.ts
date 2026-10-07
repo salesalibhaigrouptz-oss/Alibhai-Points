@@ -57,7 +57,7 @@ export function phoneToEmail(phone: string | null | undefined): string {
   }
 
   const domain =
-    process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN || "points.alibhai.co.tz";
+    process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN || "points.alibhai.co";
 
   // E.164 is +255XXXXXXXXX; slice(1) yields 255XXXXXXXXX
   const localPart = e164.slice(1);

@@ -1,9 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import { toE164 } from "../utils/phone";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
+// Support both new and old naming conventions
+// New: EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+// Old: EXPO_PUBLIC_SUPABASE_ANON_KEY
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -13,15 +19,32 @@ export const isSupabaseConfigured = Boolean(
 );
 
 /**
+ * Secure storage adapter using expo-secure-store for Supabase auth sessions.
+ * This provides better security than AsyncStorage for sensitive authentication data.
+ */
+const secureStorageAdapter = {
+  getItem: (key: string) => {
+    return SecureStore.getItemAsync(key);
+  },
+  setItem: (key: string, value: string) => {
+    return SecureStore.setItemAsync(key, value);
+  },
+  removeItem: (key: string) => {
+    return SecureStore.deleteItemAsync(key);
+  },
+};
+
+/**
  * Supabase client configured with the public anonymous key.
  * Never use the service-role key in client applications.
+ * Session is stored securely using expo-secure-store.
  */
 export const supabase = createClient(
   supabaseUrl || "https://placeholder.supabase.co",
   supabaseAnonKey || "placeholder-anon-key",
   {
     auth: {
-      storage: AsyncStorage,
+      storage: secureStorageAdapter,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,

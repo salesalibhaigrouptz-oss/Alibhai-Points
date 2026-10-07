@@ -1,26 +1,66 @@
-import { View, Text, StyleSheet, FlatList } from 'react-native';
-import { mockAuditLogs } from '@/services/mock-admin-data';
+import { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { useAuditLogs } from '@/services/hooks';
+import { apiErrorMessage } from '@/services/api';
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return 'Never';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
 export default function AuditLogs() {
+  const { data: logsData, isLoading, error, refetch } = useAuditLogs({ limit: 50 });
+  const logs = logsData?.logs || [];
+
   const LogCard = ({ log }: { log: any }) => (
     <View style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.action}>{log.action}</Text>
-        <Text style={styles.date}>{log.date}</Text>
+        <Text style={styles.date}>{formatDate(log.created_at)}</Text>
       </View>
-      <Text style={styles.admin}>Admin: {log.admin}</Text>
-      <Text style={styles.customer}>Customer: {log.customer}</Text>
+      <Text style={styles.admin}>Admin: {log.profiles?.full_name || 'Unknown'}</Text>
       <Text style={styles.description}>{log.description}</Text>
+      {log.entity_type && (
+        <Text style={styles.entity}>Entity: {log.entity_type}</Text>
+      )}
     </View>
   );
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#7A1F2B" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Failed to load audit logs. Tap to retry.</Text>
+        <TouchableOpacity onPress={() => refetch()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={mockAuditLogs}
+        data={logs}
         renderItem={({ item }) => <LogCard log={item} />}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No audit logs found</Text>
+          </View>
+        }
       />
     </View>
   );
@@ -64,13 +104,35 @@ const styles = StyleSheet.create({
     color: '#242424',
     marginBottom: 4,
   },
-  customer: {
-    fontSize: 14,
-    color: '#242424',
-    marginBottom: 4,
-  },
   description: {
     fontSize: 14,
+    color: '#777777',
+    marginBottom: 4,
+  },
+  entity: {
+    fontSize: 12,
+    color: '#999999',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#777777',
+    marginBottom: 16,
+  },
+  retryText: {
+    fontSize: 16,
+    color: '#7A1F2B',
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
     color: '#777777',
   },
 });

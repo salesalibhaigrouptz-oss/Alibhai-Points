@@ -10,13 +10,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/services/auth-context";
-import { supabase } from "@/services/supabase";
-import { phoneToEmail, toE164 } from "@/utils/phone";
-import { fetchMe, apiErrorMessage } from "@/services/api";
+import { toE164 } from "@/utils/phone";
+import { apiLogin } from "@/services/api";
 
 export default function AdminLogin() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, signOut } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,40 +32,20 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // If user provided an email directly, use it; otherwise convert phone to email
-      let email = trimmedUser;
-      if (!trimmedUser.includes("@")) {
-        const normalized = toE164(trimmedUser);
-        if (!normalized) {
-          Alert.alert("Hitilafu / Error", "Namba ya simu au barua pepe si sahihi / Invalid phone number or email");
-          setLoading(false);
-          return;
-        }
-        email = phoneToEmail(trimmedUser);
-      }
-
-      // Authenticate via Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: trimmedPass,
-      });
-
-      if (error || !data.session?.access_token) {
+      const normalized = toE164(trimmedUser);
+      if (!normalized) {
         Alert.alert(
           "Hitilafu / Error",
-          "Namba/Barua pepe au PIN si sahihi / Invalid credentials"
+          "Namba ya simu si sahihi / Invalid phone number"
         );
         setLoading(false);
         return;
       }
 
-      const accessToken = data.session.access_token;
+      const res = await apiLogin(trimmedUser, trimmedPass);
 
-      // Verify role via GET /api/me
-      const me = await fetchMe(accessToken);
-
-      if (me.role !== "admin") {
-        await supabase.auth.signOut();
+      if (res.role !== "admin") {
+        await signOut();
         Alert.alert(
           "Ufikiaji Umekataliwa / Access Denied",
           "Akaunti hii haina ruhusa ya Admin / This account does not have admin permissions."
@@ -75,10 +54,13 @@ export default function AdminLogin() {
         return;
       }
 
-      await signIn(accessToken, "admin");
+      await signIn(res.token, "admin");
       router.replace("/admin/dashboard" as any);
-    } catch (err) {
-      Alert.alert("Hitilafu / Error", apiErrorMessage(err));
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error?.message ||
+        "Namba au PIN si sahihi / Invalid credentials";
+      Alert.alert("Hitilafu / Error", msg);
     } finally {
       setLoading(false);
     }

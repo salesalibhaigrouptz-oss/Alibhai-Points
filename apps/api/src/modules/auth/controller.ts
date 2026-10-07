@@ -1,15 +1,51 @@
 import type { Request, Response, NextFunction } from "express";
 import { authService } from "./service.js";
-import { getVerifiedPhone } from "../../utils/phone.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
-import type { CompleteRegistrationInput } from "./schema.js";
+import type { LoginInput, SignupInput, CompleteRegistrationInput } from "./schema.js";
 
 export class AuthController {
   /**
+   * POST /api/auth/login
+   * Pure Phone + 6-digit PIN login. Returns JWT token and user info.
+   */
+  async login(
+    req: Request<{}, {}, LoginInput>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { phone, pin } = req.body;
+      const result = await authService.login(phone, pin);
+      sendSuccess(res, result, 200);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/auth/signup
+   * Customer signs up with Full Name + Phone + 6-digit PIN in one step.
+   * Returns JWT token and created customer record.
+   */
+  async signup(
+    req: Request<{}, {}, SignupInput>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { phone, pin } = req.body;
+      const fullName = req.body.fullName || req.body.full_name || "";
+      const result = await authService.signup(fullName, phone, pin);
+      sendSuccess(res, result, 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/me
    * Returns current user identity, role, profile, and customer record.
-   * If OTP was verified but profile not yet completed, returns registered: false.
    */
   async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -59,9 +95,7 @@ export class AuthController {
   }
 
   /**
-   * POST /api/auth/complete-registration
-   * Completes registration using full_name from body and phone from verified user.
-   * Returns 201 for initial creation, 200 for idempotent repeat requests.
+   * POST /api/auth/complete-registration (backward-compatibility)
    */
   async completeRegistration(
     req: Request<{}, {}, CompleteRegistrationInput>,
@@ -74,30 +108,16 @@ export class AuthController {
         throw new AppError(401, "UNAUTHORIZED", "Authentication required");
       }
 
-      // Phone ALWAYS comes from the verified Supabase Auth user's fake email,
-      // never from the request body. getVerifiedPhone() is the single place to
-      // swap back to real OTP (user.phone) when the SMS flow is reinstated.
-      const normalizedPhone = getVerifiedPhone(user);
       const { full_name } = req.body;
-
+      const phone = user.phone || "";
       const result = await authService.completeRegistration(
         user.id,
         full_name,
-        normalizedPhone
+        phone
       );
 
-      // 201 Created on first call, 200 OK on idempotent retry
       const statusCode = result.created ? 201 : 200;
-
-      sendSuccess(
-        res,
-        {
-          created: result.created,
-          customer_id: result.customer_id,
-          customer_code: result.customer_code,
-        },
-        statusCode
-      );
+      sendSuccess(res, result, statusCode);
     } catch (error) {
       next(error);
     }

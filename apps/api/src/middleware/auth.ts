@@ -3,15 +3,17 @@ import { supabase } from "../config/supabase.js";
 import { AppError } from "../utils/errors.js";
 import type { Customer, Profile } from "../types/index.js";
 
+import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
+
 /**
  * Authentication middleware:
  * 1. Reads the Bearer token from the Authorization header.
- * 2. Verifies the token using supabase.auth.getUser(token).
+ * 2. Verifies the token using local JWT or Supabase Auth.
  * 3. Rejects missing, invalid, or expired tokens (401).
  * 4. Loads the user profile from public.profiles table.
  * 5. Rejects users with is_active = false (403 ACCOUNT_DISABLED).
  * 6. The role ALWAYS comes from public.profiles.role, never from JWT claims or user_metadata.
- * 7. If the user verified OTP but does not have a profile yet, req.profile is null.
  */
 export async function authMiddleware(
   req: Request,
@@ -29,13 +31,28 @@ export async function authMiddleware(
       throw new AppError(401, "UNAUTHORIZED", "Token cannot be empty");
     }
 
-    // Verify token with Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !authData?.user) {
+    // Verify token with backend JWT or Supabase Auth
+    let userObj: { id: string; phone?: string } | null = null;
+    try {
+      const decoded = jwt.verify(token, env.JWT_SECRET) as any;
+      if (decoded?.id) {
+        userObj = { id: decoded.id, phone: decoded.phone };
+      }
+    } catch {
+      // Fallback: check with Supabase Auth
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getUser(token);
+        if (!authError && authData?.user) {
+          userObj = authData.user;
+        }
+      } catch {}
+    }
+
+    if (!userObj) {
       throw new AppError(401, "INVALID_TOKEN", "Session token is invalid or expired");
     }
 
-    req.user = authData.user;
+    req.user = userObj as any;
 
     // Load profile from the database
     const { data: profileData, error: profileError } = await supabase

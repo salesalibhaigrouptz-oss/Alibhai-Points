@@ -10,15 +10,30 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
-import { mockCustomers, mockPurchases, mockRedemptions } from "@/services/mock-admin-data";
 import { useAuth } from "@/services/auth-context";
-import { resetCustomerPin, apiErrorMessage } from "@/services/api";
+import { apiErrorMessage } from "@/services/api";
+import {
+  useCustomer,
+  useCustomerPurchases,
+  useResetCustomerPin,
+} from "@/services/hooks";
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return 'Never';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 export default function CustomerDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useAuth();
-  const customer = mockCustomers.find((c) => c.id === id);
+  
+  const { data: customer, isLoading, error, refetch } = useCustomer(id || '');
+  const { data: purchasesData } = useCustomerPurchases(id || '', { limit: 20 });
+  const purchases = purchasesData?.purchases || [];
+  
   const [activeTab, setActiveTab] = useState<
     "overview" | "purchases" | "points" | "redemptions"
   >("overview");
@@ -26,18 +41,27 @@ export default function CustomerDetails() {
   // Reset PIN state
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [newPin, setNewPin] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
+  
+  const resetMutation = useResetCustomerPin();
 
-  if (!customer) {
+  if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Customer not found</Text>
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#7A1F2B" />
       </View>
     );
   }
 
-  const customerPurchases = mockPurchases.filter((p) => p.customerId === id);
-  const customerRedemptions = mockRedemptions.filter((r) => r.customerId === id);
+  if (error || !customer) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Customer not found</Text>
+        <TouchableOpacity onPress={() => refetch()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const handleOpenResetModal = () => {
     setNewPin("");
@@ -56,26 +80,26 @@ export default function CustomerDetails() {
 
     Alert.alert(
       "Thibitisha / Confirm",
-      `Una uhakika unataka kubadili PIN ya mteja ${customer.id} (${customer.name})?\n\nAre you sure you want to reset the PIN for customer ${customer.id}?`,
+      `Una uhakika unataka kubadili PIN ya mteja ${customer.customer_code} (${customer.profiles?.full_name})?\n\nAre you sure you want to reset the PIN for customer ${customer.customer_code}?`,
       [
         { text: "Ghairi / Cancel", style: "cancel" },
         {
           text: "Ndio, Badili / Yes, Reset",
           style: "destructive",
           onPress: async () => {
-            setResetLoading(true);
             try {
-              await resetCustomerPin(customer.id, trimmedPin);
+              await resetMutation.mutateAsync({
+                customerCode: customer.customer_code,
+                newPin: trimmedPin,
+              });
               setResetModalVisible(false);
               setNewPin("");
               Alert.alert(
                 "Mafanikio / Success",
-                `PIN ya mteja ${customer.id} imebadilishwa kikamilifu.\nCustomer PIN has been reset successfully.`
+                `PIN ya mteja ${customer.customer_code} imebadilishwa kikamilifu.\nCustomer PIN has been reset successfully.`
               );
             } catch (err) {
               Alert.alert("Hitilafu / Error", apiErrorMessage(err));
-            } finally {
-              setResetLoading(false);
             }
           },
         },
@@ -109,15 +133,15 @@ export default function CustomerDetails() {
     <View style={styles.content}>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Customer ID</Text>
-        <Text style={styles.infoValue}>{customer.id}</Text>
+        <Text style={styles.infoValue}>{customer.customer_code}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Name</Text>
-        <Text style={styles.infoValue}>{customer.name}</Text>
+        <Text style={styles.infoValue}>{customer.profiles?.full_name || 'Unknown'}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Phone</Text>
-        <Text style={styles.infoValue}>{customer.phone}</Text>
+        <Text style={styles.infoValue}>{customer.profiles?.phone || 'N/A'}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Status</Text>
@@ -147,18 +171,18 @@ export default function CustomerDetails() {
         <View style={styles.pointsRow}>
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Total</Text>
-            <Text style={styles.pointsValue}>{customer.points}</Text>
+            <Text style={styles.pointsValue}>{customer.points_balance || 0}</Text>
           </View>
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Redeemable</Text>
             <Text style={[styles.pointsValue, styles.redeemable]}>
-              {customer.redeemablePoints}
+              {customer.points_balance || 0}
             </Text>
           </View>
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Pending</Text>
             <Text style={[styles.pointsValue, styles.pending]}>
-              {customer.pendingPoints}
+              0
             </Text>
           </View>
         </View>
@@ -166,11 +190,11 @@ export default function CustomerDetails() {
 
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Last Transaction</Text>
-        <Text style={styles.infoValue}>{customer.lastTransaction}</Text>
+        <Text style={styles.infoValue}>{customer.last_transaction_at ? formatDate(customer.last_transaction_at) : 'Never'}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Activity Deadline</Text>
-        <Text style={styles.infoValue}>{customer.activityDeadline}</Text>
+        <Text style={styles.infoValue}>N/A</Text>
       </View>
 
       {/* Admin Actions: Reset PIN button */}
@@ -192,22 +216,19 @@ export default function CustomerDetails() {
 
   const renderPurchases = () => (
     <View style={styles.content}>
-      {customerPurchases.map((purchase) => (
+      {purchases.map((purchase) => (
         <View key={purchase.id} style={styles.transactionCard}>
           <View style={styles.transactionHeader}>
-            <Text style={styles.transactionId}>{purchase.id}</Text>
-            <Text style={styles.transactionDate}>{purchase.date}</Text>
+            <Text style={styles.transactionId}>{purchase.transaction_reference}</Text>
+            <Text style={styles.transactionDate}>{formatDate(purchase.purchased_at)}</Text>
           </View>
           <Text style={styles.transactionAmount}>
-            TZS {purchase.amount.toLocaleString()}
+            TZS {purchase.purchase_amount.toLocaleString()}
           </Text>
-          <Text style={styles.transactionPoints}>+{purchase.points} points</Text>
-          <Text style={styles.transactionRecordedBy}>
-            Recorded by: {purchase.recordedBy}
-          </Text>
+          <Text style={styles.transactionPoints}>+{purchase.points_earned} points</Text>
         </View>
       ))}
-      {customerPurchases.length === 0 && (
+      {purchases.length === 0 && (
         <Text style={styles.emptyText}>No purchases found</Text>
       )}
     </View>
@@ -215,11 +236,11 @@ export default function CustomerDetails() {
 
   const renderRedemptions = () => (
     <View style={styles.content}>
-      {customerRedemptions.map((redemption) => (
+      {redemptions.map((redemption) => (
         <View key={redemption.id} style={styles.transactionCard}>
           <View style={styles.transactionHeader}>
             <Text style={styles.transactionId}>{redemption.id}</Text>
-            <Text style={styles.transactionDate}>{redemption.date}</Text>
+            <Text style={styles.transactionDate}>{formatDate(redemption.created_at)}</Text>
           </View>
           <Text style={styles.transactionPoints}>
             -{redemption.points} points
@@ -252,7 +273,7 @@ export default function CustomerDetails() {
           </View>
         </View>
       ))}
-      {customerRedemptions.length === 0 && (
+      {redemptions.length === 0 && (
         <Text style={styles.emptyText}>No redemptions found</Text>
       )}
     </View>
@@ -266,13 +287,13 @@ export default function CustomerDetails() {
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Redeemable</Text>
             <Text style={[styles.pointsValue, styles.redeemable]}>
-              {customer.redeemablePoints}
+              {customer.points_balance || 0}
             </Text>
           </View>
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Pending</Text>
             <Text style={[styles.pointsValue, styles.pending]}>
-              {customer.pendingPoints}
+              0
             </Text>
           </View>
         </View>
@@ -284,10 +305,12 @@ export default function CustomerDetails() {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} refreshControl={
+      <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+    }>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{customer.name}</Text>
-        <Text style={styles.headerSubtitle}>{customer.id}</Text>
+        <Text style={styles.headerTitle}>{customer.profiles?.full_name || 'Unknown'}</Text>
+        <Text style={styles.headerSubtitle}>{customer.customer_code}</Text>
       </View>
 
       <View style={styles.tabsContainer}>
@@ -313,7 +336,7 @@ export default function CustomerDetails() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Reset Customer PIN</Text>
             <Text style={styles.modalSubtitle}>
-              Weka PIN mpya ya tarakimu 6 kwa mteja {customer.id} ({customer.name})
+              Weka PIN mpya ya tarakimu 6 kwa mteja {customer.customer_code} ({customer.profiles?.full_name})
             </Text>
 
             <TextInput
@@ -334,7 +357,7 @@ export default function CustomerDetails() {
               <TouchableOpacity
                 style={styles.modalCancelButton}
                 onPress={() => setResetModalVisible(false)}
-                disabled={resetLoading}
+                disabled={resetMutation.isPending}
               >
                 <Text style={styles.modalCancelButtonText}>Ghairi / Cancel</Text>
               </TouchableOpacity>
@@ -342,13 +365,13 @@ export default function CustomerDetails() {
               <TouchableOpacity
                 style={[
                   styles.modalConfirmButton,
-                  (newPin.length !== 6 || resetLoading) &&
+                  (newPin.length !== 6 || resetMutation.isPending) &&
                     styles.buttonDisabled,
                 ]}
                 onPress={handleConfirmResetPin}
-                disabled={newPin.length !== 6 || resetLoading}
+                disabled={newPin.length !== 6 || resetMutation.isPending}
               >
-                {resetLoading ? (
+                {resetMutation.isPending ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <Text style={styles.modalConfirmButtonText}>
@@ -661,5 +684,15 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  retryText: {
+    fontSize: 16,
+    color: '#7A1F2B',
+    fontWeight: '600',
+    marginTop: 16,
   },
 });

@@ -62,10 +62,14 @@ export class AdminController {
 
       const authUserId: string = profileData.id;
 
-      // ── 3. Update Supabase Auth password (= the PIN) ──────────────────────
+      // ── 3. Update PIN hash in user_metadata ──────────────────────────────
+      const { hashPin } = await import("../../utils/pin.js");
       const { error: updateError } = await supabase.auth.admin.updateUserById(
         authUserId,
-        { password: new_pin }
+        {
+          password: new_pin,
+          user_metadata: { pin_hash: hashPin(new_pin) },
+        }
       );
 
       if (updateError) {

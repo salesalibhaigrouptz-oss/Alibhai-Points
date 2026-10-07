@@ -245,44 +245,30 @@ export function LoginScreen() {
     setLoading(true);
 
     try {
-      // 1. Authenticate with Supabase Auth (phone mapped to email + PIN as password)
-      const authResult = await authService.signInWithPassword({
+      const res = await authService.signInWithPassword({
         phone: phoneNumber,
         pin,
       });
 
-      const accessToken = authResult?.session?.access_token;
-      if (!accessToken) {
-        throw new Error("No session returned");
+      const token = res?.token;
+      if (!token) {
+        throw new Error("No token returned");
       }
 
-      // 2. Call GET /api/me: admin -> admin nav, customer -> customer nav, registered:false -> registration
-      try {
-        const me = await fetchMe(accessToken);
+      const role = res.role || "customer";
+      await signIn(token, role);
 
-        if (me?.registered === false) {
-          setPendingRegistrationToken(accessToken);
-          router.replace("/(auth)/registration");
-          return;
-        }
-
-        if (me?.role === "admin") {
-          await signIn(accessToken, "admin");
-          router.replace("/admin/dashboard" as any);
-          return;
-        }
-
-        // Customer login
-        await signIn(accessToken, "customer");
-        router.replace("/(tabs)");
-      } catch (meError) {
-        // Fallback to customer navigation if /api/me fails or is registering
-        await signIn(accessToken, "customer");
+      if (role === "admin") {
+        router.replace("/admin/dashboard" as any);
+      } else {
         router.replace("/(tabs)");
       }
-    } catch (error) {
-      // Per spec: Error for a wrong phone or PIN: "Namba au PIN si sahihi"
-      setFormError("Namba au PIN si sahihi");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.message ||
+        "Namba au PIN si sahihi";
+      setFormError(message);
     } finally {
       setLoading(false);
     }
@@ -399,40 +385,27 @@ export function SignupScreen() {
     setLoading(true);
 
     try {
-      // 1. Sign up user in Supabase Auth with fake email + PIN password
-      const signUpResult = await authService.signUp({
+      const res = await authService.signUp({
+        fullName,
         phone: phoneNumber,
         pin,
       });
 
-      let accessToken = signUpResult?.session?.access_token;
-
-      // If signUp doesn't return a session immediately, sign in with the new credentials
-      if (!accessToken) {
-        const signInResult = await authService.signInWithPassword({
-          phone: phoneNumber,
-          pin,
-        });
-        accessToken = signInResult?.session?.access_token;
-      }
-
-      if (!accessToken) {
+      const token = res?.token;
+      if (!token) {
         throw new Error(
-          "Imeshindikana kupata session ya akaunti. Tafadhali jaribu kuingia."
+          "Imeshindikana kusajili akaunti. Tafadhali jaribu tena."
         );
       }
 
-      // 2. Call POST /api/auth/complete-registration { full_name }
-      await completeRegistration(fullName, accessToken);
-
-      // 3. Mark signed-in and navigate to customer tabs
-      await signIn(accessToken, "customer");
+      await signIn(token, "customer");
       router.replace("/(tabs)");
-    } catch (error) {
-      const msg = apiErrorMessage(error);
-      setFormError(
-        msg || "Imeshindikana kusajili akaunti. Tafadhali jaribu tena."
-      );
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.error?.message ||
+        error?.message ||
+        "Imeshindikana kusajili akaunti. Tafadhali jaribu tena.";
+      setFormError(msg);
     } finally {
       setLoading(false);
     }

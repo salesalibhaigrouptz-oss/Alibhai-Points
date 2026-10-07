@@ -1,34 +1,72 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { mockCustomers, mockPointRules } from '@/services/mock-admin-data';
+import { useCustomer, usePreviewPurchase, useRecordPurchase, usePointRules } from '@/services/hooks';
+import { apiErrorMessage } from '@/services/api';
+
+const generateIdempotencyKey = () => `purchase-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 export default function RecordPurchase() {
   const router = useRouter();
   const [customerId, setCustomerId] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [customer, setCustomer] = useState<any>(null);
   const [calculatedPoints, setCalculatedPoints] = useState<number | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  
+  const { data: pointRules } = usePointRules();
+  const previewMutation = usePreviewPurchase();
+  const recordMutation = useRecordPurchase();
+  
+  // Manual customer fetch for search
+  const { refetch: refetchCustomer } = useCustomer(customerId, { enabled: false });
 
-  const handleSearchCustomer = () => {
-    const foundCustomer = mockCustomers.find(c => c.id === customerId);
-    if (foundCustomer) {
-      setCustomer(foundCustomer);
-    } else {
+  const handleSearchCustomer = async () => {
+    if (!customerId) {
+      Alert.alert('Error', 'Please enter a customer ID');
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const { data: foundCustomer } = await refetchCustomer();
+      if (foundCustomer) {
+        setCustomer(foundCustomer);
+      } else {
+        throw new Error('Customer not found');
+      }
+    } catch (error) {
       Alert.alert('Error', 'Customer not found');
       setCustomer(null);
+    } finally {
+      setSearching(false);
     }
   };
 
   const calculatePoints = (amount: number) => {
-    return Math.floor(amount / mockPointRules.tzsPerPoint);
+    if (!pointRules) return 0;
+    return Math.floor(amount / pointRules.tzsPerPoint);
   };
 
-  const handleAmountChange = (value: string) => {
+  const handleAmountChange = async (value: string) => {
     setAmount(value);
     const numAmount = parseFloat(value) || 0;
-    setCalculatedPoints(calculatePoints(numAmount));
+    if (numAmount > 0 && customer) {
+      try {
+        const preview = await previewMutation.mutateAsync({
+          customerCode: customer.customer_code,
+          purchaseAmount: numAmount,
+        });
+        setCalculatedPoints(preview.points_earned);
+      } catch (error) {
+        console.error('Failed to preview purchase:', error);
+        setCalculatedPoints(calculatePoints(numAmount));
+      }
+    } else {
+      setCalculatedPoints(null);
+    }
   };
 
   const handleSubmit = async () => {
@@ -44,12 +82,20 @@ export default function RecordPurchase() {
 
     setLoading(true);
 
-    // Mock API call - in production, this would call the backend
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      // Generate or reuse idempotency key
+      const key = idempotencyKey || generateIdempotencyKey();
+      setIdempotencyKey(key);
+
+      const result = await recordMutation.mutateAsync({
+        customerCode: customer.customer_code,
+        purchaseAmount: parseFloat(amount),
+        idempotencyKey: key,
+      });
+      
       Alert.alert(
         'Success',
-        `Purchase recorded!\nCustomer: ${customer.name}\nAmount: TZS ${parseFloat(amount).toLocaleString()}\nPoints: ${calculatedPoints}`,
+        `Purchase recorded!\nCustomer: ${customer.profiles?.full_name}\nAmount: TZS ${parseFloat(amount).toLocaleString()}\nPoints: ${result.points_earned}\nReference: ${result.reference}`,
         [
           {
             text: 'OK',
@@ -58,11 +104,16 @@ export default function RecordPurchase() {
               setAmount('');
               setCustomer(null);
               setCalculatedPoints(null);
+              setIdempotencyKey(null);
             },
           },
         ]
       );
-    }, 1000);
+    } catch (error) {
+      Alert.alert('Error', apiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -85,8 +136,11 @@ export default function RecordPurchase() {
             <TouchableOpacity
               style={styles.searchButton}
               onPress={handleSearchCustomer}
+              disabled={searching}
             >
-              <Text style={styles.searchButtonText}>Search</Text>
+              <Text style={styles.searchButtonText}>
+                {searching ? 'Searching...' : 'Search'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -94,9 +148,9 @@ export default function RecordPurchase() {
         {customer && (
           <View style={styles.customerInfo}>
             <Text style={styles.customerInfoTitle}>Customer Found</Text>
-            <Text style={styles.customerName}>{customer.name}</Text>
-            <Text style={styles.customerDetail}>ID: {customer.id}</Text>
-            <Text style={styles.customerDetail}>Phone: {customer.phone}</Text>
+            <Text style={styles.customerName}>{customer.profiles?.full_name || 'Unknown'}</Text>
+            <Text style={styles.customerDetail}>ID: {customer.customer_code}</Text>
+            <Text style={styles.customerDetail}>Phone: {customer.profiles?.phone || 'N/A'}</Text>
             <View style={[styles.statusBadge, customer.status === 'active' ? styles.statusActive : styles.statusInactive]}>
               <Text style={[styles.statusText, customer.status === 'active' ? styles.statusTextActive : styles.statusTextInactive]}>
                 {customer.status}
@@ -122,15 +176,15 @@ export default function RecordPurchase() {
             <Text style={styles.pointsPreviewTitle}>Points to be awarded</Text>
             <Text style={styles.pointsPreviewValue}>+{calculatedPoints} points</Text>
             <Text style={styles.pointsPreviewNote}>
-              {mockPointRules.tzsPerPoint.toLocaleString()} TZS = 1 point
+              {pointRules.tzsPerPoint.toLocaleString()} TZS = 1 point
             </Text>
           </View>
         )}
 
         <TouchableOpacity
-          style={[styles.submitButton, (!customer || !amount || loading) && styles.submitButtonDisabled]}
+          style={[styles.submitButton, (!customer || !amount || loading || searching) && styles.submitButtonDisabled]}
           onPress={handleSubmit}
-          disabled={!customer || !amount || loading}
+          disabled={!customer || !amount || loading || searching}
         >
           <Text style={styles.submitButtonText}>
             {loading ? 'Recording...' : 'Record Purchase'}

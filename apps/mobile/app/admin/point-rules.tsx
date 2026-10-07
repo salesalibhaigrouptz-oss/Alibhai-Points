@@ -1,14 +1,25 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
-import { mockPointRules } from '@/services/mock-admin-data';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { usePointRules, useUpdatePointRules } from '@/services/hooks';
+import { apiErrorMessage } from '@/services/api';
 
 export default function PointRules() {
-  const [tzsPerPoint, setTzsPerPoint] = useState(mockPointRules.tzsPerPoint.toString());
-  const [redemptionWaitDays, setRedemptionWaitDays] = useState(mockPointRules.redemptionWaitDays.toString());
-  const [activityPeriodDays, setActivityPeriodDays] = useState(mockPointRules.activityPeriodDays.toString());
+  const [tzsPerPoint, setTzsPerPoint] = useState('1000');
+  const [redemptionWaitDays, setRedemptionWaitDays] = useState('90');
+  const [activityPeriodDays, setActivityPeriodDays] = useState('25');
   const [editing, setEditing] = useState(false);
+  
+  const { data: rules, isLoading, error, refetch } = usePointRules();
+  const updateMutation = useUpdatePointRules();
 
-  const handleSave = () => {
+  // Update state when rules load
+  if (rules && editing === false) {
+    setTzsPerPoint(rules.tzsPerPoint.toString());
+    setRedemptionWaitDays(rules.redemptionWaitDays.toString());
+    setActivityPeriodDays(rules.activityPeriodDays.toString());
+  }
+
+  const handleSave = async () => {
     Alert.alert(
       'Confirm Changes',
       'This will change point rules for future transactions only. Current transactions will not be affected.',
@@ -16,9 +27,19 @@ export default function PointRules() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Save',
-          onPress: () => {
-            Alert.alert('Success', 'Point rules updated successfully');
-            setEditing(false);
+          onPress: async () => {
+            try {
+              await updateMutation.mutateAsync({
+                tzsPerPoint: parseInt(tzsPerPoint, 10),
+                redemptionWaitDays: parseInt(redemptionWaitDays, 10),
+                activityPeriodDays: parseInt(activityPeriodDays, 10),
+              });
+              Alert.alert('Success', 'Point rules updated successfully');
+              setEditing(false);
+              await refetch();
+            } catch (error) {
+              Alert.alert('Error', apiErrorMessage(error));
+            }
           },
         },
       ]
@@ -42,8 +63,29 @@ export default function PointRules() {
     </View>
   );
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#7A1F2B" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Failed to load point rules. Tap to retry.</Text>
+        <TouchableOpacity onPress={() => refetch()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} refreshControl={
+      <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+    }>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Point Rules</Text>
         <Text style={styles.headerSubtitle}>Configure loyalty point calculations</Text>
@@ -100,8 +142,11 @@ export default function PointRules() {
           <TouchableOpacity
             style={styles.saveButton}
             onPress={handleSave}
+            disabled={updateMutation.isPending}
           >
-            <Text style={styles.saveButtonText}>Save Changes</Text>
+            <Text style={styles.saveButtonText}>
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -206,6 +251,20 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#777777',
+    marginBottom: 16,
+  },
+  retryText: {
+    fontSize: 16,
+    color: '#7A1F2B',
     fontWeight: '600',
   },
 });

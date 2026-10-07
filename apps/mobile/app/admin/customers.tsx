@@ -1,24 +1,30 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
-import { mockCustomers } from '@/services/mock-admin-data';
+import { useCustomers } from '@/services/hooks';
+import { apiErrorMessage } from '@/services/api';
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return 'Never';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 export default function CustomersList() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
-
-  const filteredCustomers = mockCustomers.filter(customer => {
-    const matchesSearch =
-      customer.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.phone.includes(searchQuery);
-
-    const matchesFilter =
-      filter === 'all' || customer.status === filter;
-
-    return matchesSearch && matchesFilter;
-  });
+  
+  const params: any = {};
+  if (filter !== 'all') {
+    params.status = filter;
+  }
+  if (searchQuery) {
+    params.search = searchQuery;
+  }
+  
+  const { data: customersData, isLoading, error, refetch } = useCustomers(params);
+  const customers = customersData?.customers || [];
 
   const FilterButton = ({ label, value }: { label: string; value: 'all' | 'active' | 'inactive' }) => (
     <TouchableOpacity
@@ -34,12 +40,12 @@ export default function CustomersList() {
   const CustomerCard = ({ customer }: { customer: any }) => (
     <TouchableOpacity
       style={styles.customerCard}
-      onPress={() => router.push(`/admin/customer-details?id=${customer.id}` as any)}
+      onPress={() => router.push(`/admin/customer-details?id=${customer.customer_code}` as any)}
     >
       <View style={styles.customerHeader}>
         <View>
-          <Text style={styles.customerName}>{customer.name}</Text>
-          <Text style={styles.customerId}>{customer.id}</Text>
+          <Text style={styles.customerName}>{customer.profiles?.full_name || 'Unknown'}</Text>
+          <Text style={styles.customerId}>{customer.customer_code}</Text>
         </View>
         <View style={[styles.statusBadge, customer.status === 'active' ? styles.statusActive : styles.statusInactive]}>
           <Text style={[styles.statusText, customer.status === 'active' ? styles.statusTextActive : styles.statusTextInactive]}>
@@ -48,14 +54,33 @@ export default function CustomersList() {
         </View>
       </View>
       <View style={styles.customerDetails}>
-        <Text style={styles.detailText}>📱 {customer.phone}</Text>
-        <Text style={styles.detailText}>💰 {customer.points} pts</Text>
+        <Text style={styles.detailText}>📱 {customer.profiles?.phone || 'N/A'}</Text>
+        <Text style={styles.detailText}>💰 {customer.points_balance || 0} pts</Text>
       </View>
       <Text style={styles.lastTransaction}>
-        Last: {customer.lastTransaction}
+        Last: {customer.last_transaction_at ? formatDate(customer.last_transaction_at) : 'Never'}
       </Text>
     </TouchableOpacity>
   );
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#7A1F2B" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Failed to load customers. Tap to retry.</Text>
+        <TouchableOpacity onPress={() => refetch()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -75,10 +100,13 @@ export default function CustomersList() {
       </View>
 
       <FlatList
-        data={filteredCustomers}
+        data={customers}
         renderItem={({ item }) => <CustomerCard customer={item} />}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.customer_code}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No customers found</Text>
@@ -199,5 +227,19 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#777777',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#777777',
+    marginBottom: 16,
+  },
+  retryText: {
+    fontSize: 16,
+    color: '#7A1F2B',
+    fontWeight: '600',
   },
 });

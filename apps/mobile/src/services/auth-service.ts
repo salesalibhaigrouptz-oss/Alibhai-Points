@@ -1,59 +1,40 @@
-import { supabase } from "./supabase";
-import { phoneToEmail, toE164 } from "../utils/phone";
+import { apiLogin, apiSignup, setStoredToken } from "./api";
 import { sendWhatsAppOtp, verifyWhatsAppOtp } from "./supabase";
 
 export type AuthMode = "pin" | "whatsapp_otp";
 
-/**
- * Global setting controlling authentication flow.
- * Default is 'pin', can be toggled via EXPO_PUBLIC_AUTH_MODE environment variable.
- */
 export const AUTH_MODE: AuthMode =
   (process.env.EXPO_PUBLIC_AUTH_MODE as AuthMode) || "pin";
 
 export interface AuthService {
   mode: AuthMode;
-  signUp(params: { phone: string; pin: string }): Promise<any>;
+  signUp(params: { fullName?: string; phone: string; pin: string }): Promise<any>;
   signInWithPassword(params: { phone: string; pin: string }): Promise<any>;
   signOut(): Promise<void>;
-  // Existing WhatsApp OTP methods
   sendOtp?(phone: string): Promise<any>;
   verifyOtp?(phone: string, token: string): Promise<any>;
 }
 
 /**
- * Temporary Phone + PIN Auth implementation.
- * Maps phone to fake Supabase Auth email (255XXXXXXXXX@<AUTH_EMAIL_DOMAIN>)
- * and uses 6-digit PIN as the Supabase password.
+ * Pure Phone + 6-digit PIN Auth implementation.
+ * Communicates directly with backend API.
+ * NO EMAIL USED ANYWHERE.
  */
 export const pinAuthService: AuthService = {
   mode: "pin",
-  async signUp({ phone, pin }) {
-    const email = phoneToEmail(phone);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: pin,
-    });
-    if (error) throw error;
-    return data;
+  async signUp({ fullName, phone, pin }) {
+    return apiSignup(fullName || "", phone, pin);
   },
   async signInWithPassword({ phone, pin }) {
-    const email = phoneToEmail(phone);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password: pin,
-    });
-    if (error) throw error;
-    return data;
+    return apiLogin(phone, pin);
   },
   async signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await setStoredToken(null);
   },
 };
 
 /**
- * WhatsApp OTP Auth implementation (preserves original flow unchanged).
+ * WhatsApp OTP Auth implementation.
  */
 export const otpAuthService: AuthService = {
   mode: "whatsapp_otp",
@@ -70,13 +51,9 @@ export const otpAuthService: AuthService = {
     return verifyWhatsAppOtp(phone, token);
   },
   async signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await setStoredToken(null);
   },
 };
 
-/**
- * The active authService instance based on AUTH_MODE.
- */
 export const authService: AuthService =
   AUTH_MODE === "whatsapp_otp" ? otpAuthService : pinAuthService;
