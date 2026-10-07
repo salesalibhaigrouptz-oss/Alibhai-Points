@@ -25,20 +25,28 @@ export class AdminPurchasesController {
 
       const { customer_code, purchase_amount } = req.body;
 
+      console.log('[preview_purchase] Request:', { customer_code, purchase_amount });
+
       const { data, error } = await supabase.rpc("preview_purchase", {
         p_customer_code: customer_code,
         p_amount: purchase_amount,
       });
 
+      console.log('[preview_purchase] Supabase response:', { data, error });
+
       if (error) {
+        console.error('[preview_purchase] Supabase error:', error);
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
       if (!data || typeof data !== "object") {
+        console.error('[preview_purchase] Invalid data:', data);
         throw new AppError(500, "RPC_ERROR", "Unexpected response from preview_purchase");
       }
 
       const result = data as { ok: boolean; customer_name: string; customer_status: string; points_earned: number; amount_per_point: number };
+
+      console.log('[preview_purchase] Parsed result:', result);
 
       if (!result.ok) {
         throw new AppError(400, "PREVIEW_FAILED", "Failed to preview purchase");
@@ -51,6 +59,7 @@ export class AdminPurchasesController {
         amount_per_point: result.amount_per_point,
       });
     } catch (error) {
+      console.error('[preview_purchase] Error:', error);
       next(error);
     }
   }
@@ -75,6 +84,8 @@ export class AdminPurchasesController {
 
       const { customer_code, purchase_amount, idempotency_key } = req.body;
 
+      console.log('[record_purchase] Request:', { customer_code, purchase_amount, idempotency_key, admin_id: adminUser.id });
+
       const { data, error } = await supabase.rpc("record_purchase", {
         p_customer_code: customer_code,
         p_amount: purchase_amount,
@@ -82,11 +93,15 @@ export class AdminPurchasesController {
         p_idempotency_key: idempotency_key,
       });
 
+      console.log('[record_purchase] Supabase response:', { data, error });
+
       if (error) {
+        console.error('[record_purchase] Supabase error:', error);
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
       if (!data || typeof data !== "object") {
+        console.error('[record_purchase] Invalid data:', data);
         throw new AppError(500, "RPC_ERROR", "Unexpected response from record_purchase");
       }
 
@@ -101,7 +116,10 @@ export class AdminPurchasesController {
         code?: string;
       };
 
+      console.log('[record_purchase] Parsed result:', result);
+
       if (!result.ok) {
+        console.error('[record_purchase] Purchase failed with code:', result.code);
         if (result.code === "CUSTOMER_DISABLED") {
           throw new AppError(403, "CUSTOMER_DISABLED", "Customer profile is deactivated");
         }
@@ -117,6 +135,7 @@ export class AdminPurchasesController {
         purchase_id: result.purchase_id,
       });
     } catch (error) {
+      console.error('[record_purchase] Error:', error);
       next(error);
     }
   }

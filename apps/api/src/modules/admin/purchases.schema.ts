@@ -32,7 +32,8 @@ export const recordPurchaseSchema = z.object({
     }),
   idempotency_key: z
     .string({ required_error: "idempotency_key is required" })
-    .uuid({ message: "idempotency_key must be a valid UUID" }),
+    .min(1, { message: "idempotency_key cannot be empty" })
+    .max(255, { message: "idempotency_key is too long" }),
 }).strict();
 
 export type RecordPurchaseInput = z.infer<typeof recordPurchaseSchema>;
