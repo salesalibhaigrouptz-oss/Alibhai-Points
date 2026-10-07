@@ -217,11 +217,6 @@ export function WelcomeScreen() {
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
           Sign in or create an account with your Tanzanian phone number.
         </Text>
-        <Pressable onPress={() => router.push("/admin/login")}>
-          <Text style={[styles.adminLink, { color: colors.mutedForeground }]}>
-            Admin Login
-          </Text>
-        </Pressable>
       </View>
     </FormFrame>
   );

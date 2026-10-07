@@ -71,8 +71,8 @@ export default function RedemptionsList() {
         <Text style={styles.id}>{redemption.redemption_reference}</Text>
         <Text style={styles.date}>{formatDate(redemption.redeemed_at)}</Text>
       </View>
-      <Text style={styles.customer}>{redemption.customer_name || 'Unknown'}</Text>
-      <Text style={styles.customerId}>{redemption.customer_code}</Text>
+      <Text style={styles.customer}>{redemption.customers?.profiles?.full_name || 'Unknown'}</Text>
+      <Text style={styles.customerId}>{redemption.customers?.customer_code || 'Unknown'}</Text>
       <View style={styles.pointsRow}>
         <Text style={styles.points}>-{redemption.points_redeemed} pts</Text>
         <View style={[styles.statusBadge, redemption.status === 'completed' ? styles.statusCompleted : redemption.status === 'pending' ? styles.statusPending : styles.statusCancelled]}>

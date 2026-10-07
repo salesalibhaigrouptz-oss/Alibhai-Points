@@ -69,7 +69,6 @@ export default function AdminLogin() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>Admin Login</Text>
         <Text style={styles.subtitle}>Alibhai Points Dashboard</Text>
 
         <TextInput
