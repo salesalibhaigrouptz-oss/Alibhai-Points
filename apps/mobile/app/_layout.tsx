@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -16,6 +16,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import initI18n from '@/i18n';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -72,6 +73,11 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const [i18nInitialized, setI18nInitialized] = useState(false);
+
+  useEffect(() => {
+    initI18n().then(() => setI18nInitialized(true));
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -80,6 +86,7 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
+  if (!i18nInitialized) return null;
 
   return (
     <SafeAreaProvider>

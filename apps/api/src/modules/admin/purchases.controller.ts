@@ -2,15 +2,87 @@ import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
+import { toE164 } from "../../utils/phone.js";
 import type { PreviewPurchaseInput, RecordPurchaseInput } from "./purchases.schema.js";
 import type { VoidPurchaseInput } from "./schema.js";
+
+async function resolveCustomerCode(identifier: string, adminId?: string): Promise<string> {
+  const trimmed = identifier.trim();
+  const cleanCode = trimmed.replace(/\s+/g, "").toUpperCase();
+
+  // If identifier is not a phone number (contains letters or not digit-formatted),
+  // return customer_code directly without database lookups.
+  const isLikelyPhone = /^(\+|0|\d)\d[\d\s-]{5,}$/.test(trimmed) && !/[a-zA-Z]/.test(trimmed);
+
+  if (!isLikelyPhone) {
+    return cleanCode;
+  }
+
+  // Identifier is a phone number. Try to find the customer's customer_code.
+  // 1. Try find_customer RPC if adminId is provided
+  if (adminId) {
+    const candidates = [trimmed];
+    try {
+      const e164 = toE164(trimmed);
+      if (!candidates.includes(e164)) candidates.unshift(e164);
+    } catch {}
+
+    for (const cand of candidates) {
+      try {
+        const { data } = await supabase.rpc("find_customer", {
+          p_identifier: cand,
+          p_admin_id: adminId,
+        });
+        const code = (data as any)?.customer?.customer_code || (data as any)?.customer_code;
+        if (code) return code;
+      } catch {}
+    }
+  }
+
+  // 2. Direct fallback query if supabase.from is available
+  try {
+    const candidates = [trimmed];
+    try {
+      const e164 = toE164(trimmed);
+      if (!candidates.includes(e164)) candidates.unshift(e164);
+    } catch {}
+
+    if (typeof supabase?.from === "function") {
+      const profQuery = supabase.from("profiles");
+      if (typeof profQuery?.select === "function") {
+        for (const phone of candidates) {
+          const { data: profile } = await profQuery
+            .select("id")
+            .eq("phone", phone)
+            .maybeSingle();
+
+          if (profile?.id) {
+            const custQuery = supabase.from("customers");
+            if (typeof custQuery?.select === "function") {
+              const { data: byProfile } = await custQuery
+                .select("customer_code")
+                .eq("profile_id", profile.id)
+                .maybeSingle();
+
+              if (byProfile?.customer_code) {
+                return byProfile.customer_code;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return cleanCode;
+}
 
 export class AdminPurchasesController {
   /**
    * POST /api/admin/purchases/preview
    *
    * Preview a purchase without saving it.
-   * Returns customer name, status, and points that WOULD be earned.
+   * Returns tier information and points that WOULD be earned.
    */
   async previewPurchase(
     req: Request<{}, {}, PreviewPurchaseInput>,
@@ -23,43 +95,51 @@ export class AdminPurchasesController {
         throw new AppError(401, "UNAUTHORIZED", "Authentication required");
       }
 
-      const { customer_code, purchase_amount } = req.body;
+      // Check that the user is an admin
+      if (req.profile?.role !== "admin") {
+        throw new AppError(403, "NOT_ADMIN", "Access denied. Administrator privileges required.");
+      }
 
-      console.log('[preview_purchase] Request:', { customer_code, purchase_amount });
+      const { customer, purchase_amount } = req.body;
+      const customerCode = await resolveCustomerCode(customer, adminUser.id);
 
       const { data, error } = await supabase.rpc("preview_purchase", {
-        p_customer_code: customer_code,
+        p_customer_code: customerCode,
         p_amount: purchase_amount,
       });
 
-      console.log('[preview_purchase] Supabase response:', { data, error });
-
       if (error) {
-        console.error('[preview_purchase] Supabase error:', error);
+        if (error.message?.includes("CUSTOMER_NOT_FOUND")) {
+          throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+        }
+        if (error.message?.includes("INVALID_AMOUNT")) {
+          throw new AppError(400, "INVALID_AMOUNT", "Invalid purchase amount");
+        }
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
       if (!data || typeof data !== "object") {
-        console.error('[preview_purchase] Invalid data:', data);
         throw new AppError(500, "RPC_ERROR", "Unexpected response from preview_purchase");
       }
 
-      const result = data as { ok: boolean; customer_name: string; customer_status: string; points_earned: number; amount_per_point: number };
-
-      console.log('[preview_purchase] Parsed result:', result);
+      const result = data as any;
 
       if (!result.ok) {
+        if (result.code === "CUSTOMER_NOT_FOUND") {
+          throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+        }
         throw new AppError(400, "PREVIEW_FAILED", "Failed to preview purchase");
       }
 
       sendSuccess(res, {
+        ...data,
         customer_name: result.customer_name,
         customer_status: result.customer_status,
-        points_earned: result.points_earned,
+        points_earned: result.points_earned ?? result.points_to_earn,
+        points_to_earn: result.points_to_earn ?? result.points_earned,
         amount_per_point: result.amount_per_point,
       });
     } catch (error) {
-      console.error('[preview_purchase] Error:', error);
       next(error);
     }
   }
@@ -82,44 +162,35 @@ export class AdminPurchasesController {
         throw new AppError(401, "UNAUTHORIZED", "Authentication required");
       }
 
-      const { customer_code, purchase_amount, idempotency_key } = req.body;
+      // Check that the user is an admin
+      if (req.profile?.role !== "admin") {
+        throw new AppError(403, "NOT_ADMIN", "Access denied. Administrator privileges required.");
+      }
 
-      console.log('[record_purchase] Request:', { customer_code, purchase_amount, idempotency_key, admin_id: adminUser.id });
+      const { customer, purchase_amount, idempotency_key } = req.body;
+      const customerCode = await resolveCustomerCode(customer, adminUser.id);
 
       const { data, error } = await supabase.rpc("record_purchase", {
-        p_customer_code: customer_code,
+        p_customer_code: customerCode,
         p_amount: purchase_amount,
         p_admin_id: adminUser.id,
         p_idempotency_key: idempotency_key,
       });
 
-      console.log('[record_purchase] Supabase response:', { data, error });
-
       if (error) {
-        console.error('[record_purchase] Supabase error:', error);
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
       if (!data || typeof data !== "object") {
-        console.error('[record_purchase] Invalid data:', data);
         throw new AppError(500, "RPC_ERROR", "Unexpected response from record_purchase");
       }
 
-      const result = data as {
-        ok: boolean;
-        duplicate: boolean;
-        purchase_id: string;
-        transaction_reference: string;
-        points_earned: number;
-        points_balance: number;
-        customer_status: string;
-        code?: string;
-      };
-
-      console.log('[record_purchase] Parsed result:', result);
+      const result = data as any;
 
       if (!result.ok) {
-        console.error('[record_purchase] Purchase failed with code:', result.code);
+        if (result.code === "CUSTOMER_NOT_FOUND") {
+          throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+        }
         if (result.code === "CUSTOMER_DISABLED") {
           throw new AppError(403, "CUSTOMER_DISABLED", "Customer profile is deactivated");
         }
@@ -127,15 +198,17 @@ export class AdminPurchasesController {
       }
 
       sendSuccess(res, {
-        reference: result.transaction_reference,
+        ...data,
+        reference: result.transaction_reference || result.reference,
+        transaction_reference: result.transaction_reference || result.reference,
         points_earned: result.points_earned,
-        new_balance: result.points_balance,
+        new_balance: result.points_balance ?? result.new_balance,
+        points_balance: result.points_balance ?? result.new_balance,
         customer_status: result.customer_status,
-        duplicate: result.duplicate,
+        duplicate: result.duplicate ?? false,
         purchase_id: result.purchase_id,
       });
     } catch (error) {
-      console.error('[record_purchase] Error:', error);
       next(error);
     }
   }

@@ -12,7 +12,7 @@ import { adminRedemptionsController } from "./redemptions.controller.js";
 import { adminReportsController } from "./reports.controller.js";
 import { adminRulesController } from "./rules.controller.js";
 import { adminAuditController } from "./audit.controller.js";
-import { resetPinSchema, updateCustomerStatusSchema, voidPurchaseSchema, updatePointRulesSchema } from "./schema.js";
+import { resetPinSchema, updateCustomerStatusSchema, voidPurchaseSchema, updatePointRulesSchema, updateLoyaltyTierSchema } from "./schema.js";
 import { previewPurchaseSchema, recordPurchaseSchema } from "./purchases.schema.js";
 import { cancelRedemptionSchema, directRedeemSchema } from "./redemptions.schema.js";
 
@@ -20,6 +20,7 @@ const router = Router();
 
 /**
  * GET /api/admin/dashboard
+ * Query: { city? }
  * Protected: Administrator role only.
  */
 router.get(
@@ -31,7 +32,7 @@ router.get(
 
 /**
  * POST /api/admin/purchases/preview
- * Body: { customer_code, purchase_amount }
+ * Body: { customer, purchase_amount }
  * Protected: Administrator role only.
  */
 router.post(
@@ -45,7 +46,7 @@ router.post(
 
 /**
  * POST /api/admin/purchases
- * Body: { customer_code, purchase_amount, idempotency_key }
+ * Body: { customer, purchase_amount, idempotency_key }
  * Protected: Administrator role only.
  */
 router.post(
@@ -84,8 +85,31 @@ router.post(
 );
 
 /**
+ * GET /api/admin/customers/lookup
+ * Query: { q } - customer ID or phone
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/lookup",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.lookupCustomer.bind(adminCustomersController)
+);
+
+/**
+ * GET /api/admin/customers/cities
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/cities",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.getCustomerCities.bind(adminCustomersController)
+);
+
+/**
  * GET /api/admin/customers
- * Query: { search?, status?, near_deadline?, page?, limit? }
+ * Query: { search?, status?, city?, tier?, near_deadline?, page?, limit? }
  * Protected: Administrator role only.
  */
 router.get(
@@ -130,6 +154,40 @@ router.get(
   authMiddleware,
   requireAdmin,
   adminCustomersController.getCustomerPurchases.bind(adminCustomersController)
+);
+
+/**
+ * GET /api/admin/customers/:customerCode/find
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/:customerCode/find",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.findCustomer.bind(adminCustomersController)
+);
+
+/**
+ * GET /api/admin/customers/:customerCode/activity
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/:customerCode/activity",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.getRecentActivity.bind(adminCustomersController)
+);
+
+/**
+ * GET /api/admin/customers/:identifier/statement
+ * Query: { from?, to?, format? }
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/:identifier/statement",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.getCustomerStatement.bind(adminCustomersController)
 );
 
 /**
@@ -222,6 +280,17 @@ router.get(
 );
 
 /**
+ * GET /api/admin/tiers
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/tiers",
+  authMiddleware,
+  requireAdmin,
+  adminRulesController.getLoyaltyTiers.bind(adminRulesController)
+);
+
+/**
  * GET /api/admin/rules
  * Protected: Administrator role only.
  */
@@ -244,6 +313,20 @@ router.put(
   adminWriteLimiter,
   validateBody(updatePointRulesSchema),
   adminRulesController.updateRule.bind(adminRulesController)
+);
+
+/**
+ * PUT /api/admin/tiers/:tierId
+ * Body: { min_lifetime_purchases, point_value_tzs }
+ * Protected: Administrator role only.
+ */
+router.put(
+  "/tiers/:tierId",
+  authMiddleware,
+  requireAdmin,
+  adminWriteLimiter,
+  validateBody(updateLoyaltyTierSchema),
+  adminRulesController.updateLoyaltyTier.bind(adminRulesController)
 );
 
 /**

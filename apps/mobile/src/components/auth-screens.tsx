@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Feather } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import {
   Redirect,
@@ -121,6 +122,11 @@ const signupSchema = z
       .string()
       .trim()
       .min(2, "Weka jina kamili (angalau herufi 2) / Enter full name (at least 2 letters)"),
+    city: z
+      .string()
+      .trim()
+      .min(2, "Weka jiji / Enter city (at least 2 characters)")
+      .max(60, "Jiji nindefu sana / City is too long (max 60 characters)"),
     phoneNumber: z
       .string()
       .trim()
@@ -144,6 +150,7 @@ type SignupValues = z.infer<typeof signupSchema>;
 
 const registrationSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
+  city: z.string().trim().min(2, "Enter your city.").max(60),
 });
 type RegistrationValues = z.infer<typeof registrationSchema>;
 
@@ -171,6 +178,7 @@ function FormFrame({ children }: { children: ReactNode }) {
 
 export function WelcomeScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   return (
     <FormFrame>
       <BrandHeader />
@@ -179,16 +187,16 @@ export function WelcomeScreen() {
           <Feather name="award" size={31} color={colors.primary} />
         </View>
         <PageHeading
-          eyebrow="Your Alibhai account"
-          title="Points, made simple."
-          description="See your balance, know what’s ready to redeem, and keep track of your rewards in one place."
+          eyebrow={t("auth.welcome")}
+          title={t("auth.tagline")}
+          description={t("auth.taglineDesc")}
         />
         <Card style={styles.welcomeNote}>
           <View style={styles.noteIcon}>
             <Feather name="shield" size={18} color={colors.primary} />
           </View>
           <Text style={[styles.noteText, { color: colors.mutedForeground }]}>
-            Your points and account status always come directly from Alibhai.
+            {t("auth.securityNote")}
           </Text>
         </Card>
       </View>
@@ -196,12 +204,12 @@ export function WelcomeScreen() {
         {AUTH_MODE === "pin" ? (
           <>
             <PrimaryButton
-              label="Ingia / Log in"
+              label={t("auth.login")}
               onPress={() => router.push("/(auth)/login" as any)}
               testID="welcome-login"
             />
             <PrimaryButton
-              label="Jisajili / Sign up"
+              label={t("auth.signup")}
               onPress={() => router.push("/(auth)/signup" as any)}
               secondary
               testID="welcome-signup"
@@ -209,13 +217,13 @@ export function WelcomeScreen() {
           </>
         ) : (
           <PrimaryButton
-            label="Get started"
+            label={t("auth.getStarted")}
             onPress={() => router.push("/(auth)/phone")}
             testID="welcome-get-started"
           />
         )}
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-          Sign in or create an account with your Tanzanian phone number.
+          {t("auth.welcomeSubtitle")}
         </Text>
       </View>
     </FormFrame>
@@ -224,6 +232,7 @@ export function WelcomeScreen() {
 
 export function LoginScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { signIn, setPendingRegistrationToken } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -262,7 +271,7 @@ export function LoginScreen() {
       const message =
         error?.response?.data?.error?.message ||
         error?.message ||
-        "Namba au PIN si sahihi";
+        t("auth.loginError");
       setFormError(message);
     } finally {
       setLoading(false);
@@ -274,8 +283,8 @@ export function LoginScreen() {
       <BrandHeader compact />
       <PageHeading
         eyebrow="Alibhai Points"
-        title="Ingia / Log in"
-        description="Weka namba ya simu na PIN yako ya tarakimu 6 kuingia kwenye akaunti yako."
+        title={t("auth.login")}
+        description={t("auth.loginSubtitle")}
       />
 
       <View style={styles.formFields}>
@@ -284,14 +293,14 @@ export function LoginScreen() {
           name="phoneNumber"
           render={({ field }) => (
             <TextField
-              label="Namba ya simu / Phone number"
+              label={t("auth.phoneNumber")}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               keyboardType="phone-pad"
               autoComplete="tel"
               autoCapitalize="none"
-              placeholder="07XXXXXXXX au +255XXXXXXXXX"
+              placeholder="07XXXXXXXX / +255XXXXXXXXX"
               error={formState.errors.phoneNumber?.message}
               testID="login-phone-input"
             />
@@ -303,7 +312,7 @@ export function LoginScreen() {
           name="pin"
           render={({ field }) => (
             <TextField
-              label="PIN (tarakimu 6)"
+              label={t("auth.pin")}
               value={field.value}
               onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
               onBlur={field.onBlur}
@@ -333,7 +342,7 @@ export function LoginScreen() {
         {formError ? <InlineNotice message={formError} tone="warning" /> : null}
 
         <PrimaryButton
-          label="Ingia / Log in"
+          label={t("auth.login")}
           onPress={submit}
           loading={loading}
           testID="login-submit"
@@ -341,21 +350,21 @@ export function LoginScreen() {
 
         {/* Specified requirement: line on Login */}
         <Text style={[styles.forgotPinNotice, { color: colors.mutedForeground }]}>
-          Umesahau PIN? Wasiliana na ofisi / Forgot PIN? Contact the office.
+          {t("auth.forgotPin")}
         </Text>
 
         <View style={styles.switchAuthRow}>
           <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-            Huna akaunti? / Don’t have an account?
+            {t("auth.dontHaveAccount")}
           </Text>
           <TextButton
-            label="Jisajili / Sign up"
+            label={t("auth.signup")}
             onPress={() => router.push("/(auth)/signup" as any)}
             testID="login-to-signup"
           />
         </View>
 
-        <TextButton label="Rudi nyuma / Back" onPress={() => router.back()} />
+        <TextButton label={t("common.back")} onPress={() => router.back()} />
       </View>
     </FormFrame>
   );
@@ -363,6 +372,7 @@ export function LoginScreen() {
 
 export function SignupScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { signIn } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -371,10 +381,10 @@ export function SignupScreen() {
 
   const { control, handleSubmit, formState } = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { fullName: "", phoneNumber: "", pin: "", confirmPin: "" },
+    defaultValues: { fullName: "", city: "", phoneNumber: "", pin: "", confirmPin: "" },
   });
 
-  const submit = handleSubmit(async ({ fullName, phoneNumber, pin }) => {
+  const submit = handleSubmit(async ({ fullName, city, phoneNumber, pin }) => {
     Keyboard.dismiss();
     setFormError(null);
     setLoading(true);
@@ -382,6 +392,7 @@ export function SignupScreen() {
     try {
       const res = await authService.signUp({
         fullName,
+        city,
         phone: phoneNumber,
         pin,
       });
@@ -410,9 +421,9 @@ export function SignupScreen() {
     <FormFrame>
       <BrandHeader compact />
       <PageHeading
-        eyebrow="Akaunti Mpya"
-        title="Jisajili / Sign up"
-        description="Fungua akaunti ya Alibhai Points kuanza kupata na kutumia pointi zako."
+        eyebrow="Alibhai Points"
+        title={t("auth.signup")}
+        description={t("auth.signupSubtitle")}
       />
 
       <View style={styles.formFields}>
@@ -421,15 +432,32 @@ export function SignupScreen() {
           name="fullName"
           render={({ field }) => (
             <TextField
-              label="Jina kamili / Full name"
+              label={t("auth.fullName")}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               autoComplete="name"
               autoCapitalize="words"
-              placeholder="Mfano: Juma Rashid"
+              placeholder="e.g. Juma Rashid"
               error={formState.errors.fullName?.message}
               testID="signup-name-input"
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="city"
+          render={({ field }) => (
+            <TextField
+              label={t("auth.city")}
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              autoCapitalize="words"
+              placeholder="e.g. Dar es Salaam"
+              error={formState.errors.city?.message}
+              testID="signup-city-input"
             />
           )}
         />
@@ -439,14 +467,14 @@ export function SignupScreen() {
           name="phoneNumber"
           render={({ field }) => (
             <TextField
-              label="Namba ya simu / Phone number"
+              label={t("auth.phoneNumber")}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               keyboardType="phone-pad"
               autoComplete="tel"
               autoCapitalize="none"
-              placeholder="07XXXXXXXX au +255XXXXXXXXX"
+              placeholder="07XXXXXXXX / +255XXXXXXXXX"
               error={formState.errors.phoneNumber?.message}
               testID="signup-phone-input"
             />
@@ -458,7 +486,7 @@ export function SignupScreen() {
           name="pin"
           render={({ field }) => (
             <TextField
-              label="PIN ya siri (tarakimu 6)"
+              label={t("auth.pin")}
               value={field.value}
               onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
               onBlur={field.onBlur}
@@ -490,7 +518,7 @@ export function SignupScreen() {
           name="confirmPin"
           render={({ field }) => (
             <TextField
-              label="Thibitisha PIN / Confirm PIN"
+              label={t("auth.confirmPin")}
               value={field.value}
               onChangeText={(text) => field.onChange(text.replace(/\D/g, "").slice(0, 6))}
               onBlur={field.onBlur}
@@ -520,7 +548,7 @@ export function SignupScreen() {
         {formError ? <InlineNotice message={formError} tone="warning" /> : null}
 
         <PrimaryButton
-          label="Jisajili / Sign up"
+          label={t("auth.signup")}
           onPress={submit}
           loading={loading}
           testID="signup-submit"
@@ -528,16 +556,16 @@ export function SignupScreen() {
 
         <View style={styles.switchAuthRow}>
           <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-            Una akaunti tayari? / Already have an account?
+            {t("auth.alreadyHaveAccount")}
           </Text>
           <TextButton
-            label="Ingia / Log in"
+            label={t("auth.login")}
             onPress={() => router.push("/(auth)/login" as any)}
             testID="signup-to-login"
           />
         </View>
 
-        <TextButton label="Rudi nyuma / Back" onPress={() => router.back()} />
+        <TextButton label={t("common.back")} onPress={() => router.back()} />
       </View>
     </FormFrame>
   );
@@ -829,27 +857,29 @@ export function OtpScreen() {
 
 export function RegistrationScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { pendingRegistrationToken, setPendingRegistrationToken, signIn } =
     useAuth();
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const { control, handleSubmit, formState } = useForm<RegistrationValues>({
     resolver: zodResolver(registrationSchema),
-    defaultValues: { fullName: "" },
+    defaultValues: { fullName: "", city: "" },
   });
 
-  const submit = handleSubmit(async ({ fullName }) => {
+  const submit = handleSubmit(async ({ fullName, city }) => {
     if (!pendingRegistrationToken) return;
     Keyboard.dismiss();
     setFormError(null);
     setLoading(true);
 
     try {
-      await completeRegistration(fullName, pendingRegistrationToken);
+      const result = await completeRegistration(fullName, city, pendingRegistrationToken);
       const token = pendingRegistrationToken;
       setPendingRegistrationToken(null);
+      setCustomerId(result.customer_code || null);
       await signIn(token, "customer");
-      router.replace("/(tabs)");
     } catch (error) {
       setFormError(apiErrorMessage(error));
     } finally {
@@ -861,13 +891,44 @@ export function RegistrationScreen() {
     return <Redirect href={(AUTH_MODE === "pin" ? "/(auth)/login" : "/(auth)/phone") as any} />;
   }
 
+  // Show welcome screen with customer ID after successful registration
+  if (customerId) {
+    return (
+      <FormFrame>
+        <BrandHeader compact />
+        <View style={styles.welcomeContent}>
+          <View style={[styles.welcomeMark, { backgroundColor: colors.accent }]}>
+            <Feather name="check-circle" size={31} color={colors.primary} />
+          </View>
+          <PageHeading
+            eyebrow="Alibhai Points"
+            title={t("auth.welcomeMessage")}
+            description=""
+          />
+          <Card style={styles.customerIdCard}>
+            <Text style={[styles.customerIdText, { color: colors.foreground }]}>
+              {customerId}
+            </Text>
+          </Card>
+        </View>
+        <View style={styles.formActions}>
+          <PrimaryButton
+            label={t("common.continue")}
+            onPress={() => router.replace("/(tabs)" as any)}
+            testID="registration-continue"
+          />
+        </View>
+      </FormFrame>
+    );
+  }
+
   return (
     <FormFrame>
       <BrandHeader compact />
       <PageHeading
-        eyebrow="Almost there"
-        title="Create your account"
-        description="Add your name to finish setting up your Alibhai Points account."
+        eyebrow="Alibhai Points"
+        title={t("auth.signupTitle")}
+        description={t("auth.signupSubtitle")}
       />
       <View style={styles.formFields}>
         <Controller
@@ -875,27 +936,43 @@ export function RegistrationScreen() {
           name="fullName"
           render={({ field }) => (
             <TextField
-              label="Full name"
+              label={t("auth.fullName")}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               autoComplete="name"
               autoCapitalize="words"
-              placeholder="Your full name"
+              placeholder="e.g. Juma Rashid"
               error={formState.errors.fullName?.message}
               testID="registration-name-input"
             />
           )}
         />
+        <Controller
+          control={control}
+          name="city"
+          render={({ field }) => (
+            <TextField
+              label={t("auth.city")}
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              autoCapitalize="words"
+              placeholder="e.g. Dar es Salaam"
+              error={formState.errors.city?.message}
+              testID="registration-city-input"
+            />
+          )}
+        />
         {formError ? <InlineNotice message={formError} tone="warning" /> : null}
         <PrimaryButton
-          label="Create account"
+          label={t("auth.register")}
           onPress={submit}
           loading={loading}
           testID="registration-submit"
         />
         <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
-          Your customer ID will be created by Alibhai when registration is complete.
+          {t("auth.welcomeSubtitle")}
         </Text>
       </View>
     </FormFrame>
@@ -957,5 +1034,16 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: "wrap",
     marginTop: 4,
+  },
+  customerIdCard: {
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  customerIdText: {
+    fontSize: 32,
+    fontWeight: "700",
+    letterSpacing: 2,
+    textAlign: "center",
   },
 });

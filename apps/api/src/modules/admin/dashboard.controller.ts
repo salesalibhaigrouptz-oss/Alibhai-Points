@@ -13,9 +13,12 @@ export class AdminDashboardController {
    * - Total points issued, redeemable points, points waiting, points redeemed, points expired
    * - Total purchase value, purchases today and this month
    * - Pending redemption requests count
+   * - Breakdown by city (customers, active, purchases today and this month, purchase value)
+   * - Breakdown by tier (customer count)
+   * Optional city filter to limit all figures to that city
    */
   async getDashboardMetrics(
-    req: Request,
+    req: Request<{}, {}, {}, { city?: string }>,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -25,40 +28,60 @@ export class AdminDashboardController {
         throw new AppError(401, "UNAUTHORIZED", "Authentication required");
       }
 
+      const { city } = req.query;
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+      // Build customer query with optional city filter
+      let customerQuery = supabase
+        .from("customers")
+        .select(`
+          id,
+          status,
+          last_transaction_at,
+          created_at,
+          city,
+          tier_id,
+          loyalty_tiers (
+            id,
+            name
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (city) {
+        customerQuery = customerQuery.eq("city", city);
+      }
+
+      const { data: customerStats } = await customerQuery;
+
       // Fetch all metrics in parallel for better performance with safe fallbacks
       const [
-        { data: customerStats },
         { data: pointStats },
         { data: purchaseStats },
         pendingRedemptionsRes,
         { data: ruleData },
       ] = await Promise.all([
-        // Customer statistics
-        supabase
-          .from("customers")
-          .select("status, last_transaction_at, created_at")
-          .order("created_at", { ascending: false }),
-
         // Point statistics from point_lots
         supabase
           .from("point_lots")
-          .select("points_earned, points_remaining, points_expired, status, redeemable_at"),
+          .select("points_earned, points_remaining, points_expired, status, redeemable_at, customer_id")
+          .in("customer_id", customerStats?.map((c: any) => c.id) || []),
 
         // Purchase statistics
         supabase
           .from("purchases")
-          .select("purchase_amount, status, purchased_at")
+          .select("purchase_amount, status, purchased_at, customer_id")
+          .in("customer_id", customerStats?.map((c: any) => c.id) || [])
           .order("purchased_at", { ascending: false }),
 
         // Pending redemptions count
         supabase
           .from("point_redemptions")
           .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
+          .eq("status", "pending")
+          .in("customer_id", customerStats?.map((c: any) => c.id) || []),
 
         // Active point rule for deadline calculation
         supabase
@@ -68,7 +91,6 @@ export class AdminDashboardController {
           .maybeSingle(),
       ]);
 
-      const safeCustomerStats = customerStats || [];
       const safePointStats = pointStats || [];
       const safePurchaseStats = purchaseStats || [];
       const pendingRedemptions = pendingRedemptionsRes?.count || 0;
@@ -115,7 +137,8 @@ export class AdminDashboardController {
       const { data: completedRedemptions } = await supabase
         .from("point_redemptions")
         .select("points_redeemed")
-        .eq("status", "completed");
+        .eq("status", "completed")
+        .in("customer_id", customerStats?.map((c: any) => c.id) || []);
 
       redeemedPoints = completedRedemptions?.reduce((sum: number, r: any) => sum + r.points_redeemed, 0) || 0;
 
@@ -146,6 +169,65 @@ export class AdminDashboardController {
 
       const pendingRedemptionsCount = pendingRedemptions || 0;
 
+      // Calculate breakdown by city
+      const cityBreakdown: Record<string, any> = {};
+      customerStats?.forEach((customer: any) => {
+        const customerCity = customer.city || "Unknown";
+        if (!cityBreakdown[customerCity]) {
+          cityBreakdown[customerCity] = {
+            city: customerCity,
+            customers: 0,
+            active: 0,
+            purchases_today: 0,
+            purchases_this_month: 0,
+            purchase_value_today: 0,
+            purchase_value_this_month: 0,
+          };
+        }
+        cityBreakdown[customerCity].customers += 1;
+        if (customer.status === "active") {
+          cityBreakdown[customerCity].active += 1;
+        }
+      });
+
+      // Add purchase data to city breakdown
+      purchaseStats?.forEach((purchase: any) => {
+        const customer = customerStats?.find((c: any) => c.id === purchase.customer_id);
+        if (customer) {
+          const customerCity = customer.city || "Unknown";
+          if (cityBreakdown[customerCity]) {
+            if (purchase.status === "completed") {
+              const purchaseDate = new Date(purchase.purchased_at);
+              if (purchaseDate >= todayStart) {
+                cityBreakdown[customerCity].purchases_today += 1;
+                cityBreakdown[customerCity].purchase_value_today += Number(purchase.purchase_amount);
+              }
+              if (purchaseDate >= monthStart) {
+                cityBreakdown[customerCity].purchases_this_month += 1;
+                cityBreakdown[customerCity].purchase_value_this_month += Number(purchase.purchase_amount);
+              }
+            }
+          }
+        }
+      });
+
+      const cities = Object.values(cityBreakdown).sort((a: any, b: any) => a.city.localeCompare(b.city));
+
+      // Calculate breakdown by tier
+      const tierBreakdown: Record<string, any> = {};
+      customerStats?.forEach((customer: any) => {
+        const tierName = customer.loyalty_tiers?.name || "Unknown";
+        if (!tierBreakdown[tierName]) {
+          tierBreakdown[tierName] = {
+            tier: tierName,
+            customer_count: 0,
+          };
+        }
+        tierBreakdown[tierName].customer_count += 1;
+      });
+
+      const tiers = Object.values(tierBreakdown).sort((a: any, b: any) => a.tier.localeCompare(b.tier));
+
       sendSuccess(res, {
         customers: {
           total: totalCustomers,
@@ -174,6 +256,8 @@ export class AdminDashboardController {
         redemptions: {
           pending_count: pendingRedemptionsCount,
         },
+        by_city: cities,
+        by_tier: tiers,
       });
     } catch (error) {
       next(error);

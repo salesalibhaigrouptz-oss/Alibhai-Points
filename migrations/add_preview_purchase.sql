@@ -17,6 +17,7 @@ AS $$
 DECLARE
   v_c      public.customers%rowtype;
   v_p      public.profiles%rowtype;
+  v_tier   public.loyalty_tiers%rowtype;
   v_rule   public.point_rules%rowtype;
   v_points integer;
 BEGIN
@@ -37,6 +38,8 @@ BEGIN
     RAISE EXCEPTION 'CUSTOMER_NOT_FOUND';
   END IF;
 
+  SELECT * INTO v_tier FROM public.loyalty_tiers WHERE id = v_c.tier_id;
+
   SELECT * INTO v_rule FROM public.point_rules WHERE is_active;
 
   IF NOT FOUND THEN
@@ -49,6 +52,7 @@ BEGIN
     'ok', true,
     'customer_name', v_p.full_name,
     'customer_status', v_c.status,
+    'customer_tier', COALESCE(v_tier.name, 'Unknown'),
     'points_earned', v_points,
     'amount_per_point', v_rule.amount_per_point
   );

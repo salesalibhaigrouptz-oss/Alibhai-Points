@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useAuditLogs } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
 
-const formatDate = (dateString: string | null) => {
-  if (!dateString) return 'Never';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
 export default function AuditLogs() {
+  const { t } = useTranslation();
   const { data: logsData, isLoading, error, refetch } = useAuditLogs({ limit: 50 });
   const logs = logsData?.logs || [];
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return t('common.never');
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   const LogCard = ({ log }: { log: any }) => (
     <View style={styles.card}>
@@ -19,7 +21,7 @@ export default function AuditLogs() {
         <Text style={styles.action}>{log.action}</Text>
         <Text style={styles.date}>{formatDate(log.created_at)}</Text>
       </View>
-      <Text style={styles.admin}>Admin: {log.profiles?.full_name || 'Unknown'}</Text>
+      <Text style={styles.admin}>Admin: {log.profiles?.full_name || t('common.unknown')}</Text>
       <Text style={styles.description}>{log.description}</Text>
       {log.entity_type && (
         <Text style={styles.entity}>Entity: {log.entity_type}</Text>
@@ -38,9 +40,9 @@ export default function AuditLogs() {
   if (error) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={styles.errorText}>Failed to load audit logs. Tap to retry.</Text>
+        <Text style={styles.errorText}>{t('admin.auditLogs.failedLoad')}</Text>
         <TouchableOpacity onPress={() => refetch()}>
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{t('common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -58,7 +60,7 @@ export default function AuditLogs() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No audit logs found</Text>
+            <Text style={styles.emptyText}>{t('admin.auditLogs.empty')}</Text>
           </View>
         }
       />

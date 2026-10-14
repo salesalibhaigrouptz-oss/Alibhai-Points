@@ -11,6 +11,7 @@ export class CustomerRedemptionsController {
    *
    * Creates a pending redemption request for the authenticated customer.
    * Points are reserved immediately from the oldest eligible lots (FIFO).
+   * Response now includes point_value_tzs and value_tzs from the current tier.
    */
   async createRedemption(
     req: Request<{}, {}, CreateRedemptionInput>,
@@ -45,6 +46,8 @@ export class CustomerRedemptionsController {
         reference?: string;
         status?: string;
         points?: number;
+        point_value_tzs?: number;
+        value_tzs?: number;
         redeemable_points?: number;
       };
 
@@ -61,6 +64,8 @@ export class CustomerRedemptionsController {
         reference: result.reference,
         status: result.status,
         points: result.points,
+        point_value_tzs: result.point_value_tzs,
+        value_tzs: result.value_tzs,
       });
     } catch (error) {
       next(error);
@@ -70,10 +75,10 @@ export class CustomerRedemptionsController {
   /**
    * GET /api/customer/me/redemptions
    *
-   * Returns redemption history for the authenticated customer.
+   * Lists all redemptions for the authenticated customer.
    */
   async listRedemptions(
-    req: Request<{}, {}, {}, { page?: string; limit?: string }>,
+    req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -83,46 +88,30 @@ export class CustomerRedemptionsController {
         throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer record not found");
       }
 
-      const { page = "1", limit = "20" } = req.query;
-
-      const pageNum = parseInt(page, 10);
-      const limitNum = parseInt(limit, 10);
-      const offset = (pageNum - 1) * limitNum;
-
-      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
-        throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters");
-      }
-
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from("point_redemptions")
         .select(`
           id,
           redemption_reference,
           points_redeemed,
-          source,
           status,
           redeemed_at,
           completed_at,
           cancelled_at,
-          cancel_reason
-        `, { count: "exact" })
+          point_redemption_items (
+            id,
+            point_lot_id,
+            points_used
+          )
+        `)
         .eq("customer_id", customer.id)
-        .order("redeemed_at", { ascending: false })
-        .range(offset, offset + limitNum - 1);
+        .order("redeemed_at", { ascending: false });
 
       if (error) {
-        throw new AppError(500, "DATABASE_ERROR", error.message);
+        throw new AppError(500, "DB_ERROR", error.message);
       }
 
-      sendSuccess(res, {
-        redemptions: data,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: count || 0,
-          pages: Math.ceil((count || 0) / limitNum),
-        },
-      });
+      sendSuccess(res, { redemptions: data });
     } catch (error) {
       next(error);
     }

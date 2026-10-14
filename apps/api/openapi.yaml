@@ -119,10 +119,117 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /customer/redemptions:
+  /customer/me/redemptions:
     post:
       summary: Create redemption request
       description: Customer requests to redeem points
+      tags:
+        - Customer
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - points
+              properties:
+                points:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000000
+      responses:
+        '200':
+          description: Redemption created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      redemption_id:
+                        type: string
+                      reference:
+                        type: string
+                      status:
+                        type: string
+                      points:
+                        type: integer
+                      point_value_tzs:
+                        type: number
+                      value_tzs:
+                        type: number
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      summary: List customer redemptions
+      description: Returns all redemptions for the authenticated customer
+      tags:
+        - Customer
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Redemptions retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      redemptions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            redemption_reference:
+                              type: string
+                            points_redeemed:
+                              type: integer
+                            status:
+                              type: string
+                            redeemed_at:
+                              type: string
+                            completed_at:
+                              type: string
+                              nullable: true
+                            cancelled_at:
+                              type: string
+                              nullable: true
+                            point_redemption_items:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: string
+                                  product_name:
+                                    type: string
+                                  quantity:
+                                    type: integer
+                                  points:
+                                    type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /customer/redemptions:
+    post:
+      summary: Create redemption request (legacy)
+      description: Customer requests to redeem points (legacy endpoint, use /me/redemptions instead)
       tags:
         - Customer
       security:
@@ -253,11 +360,17 @@ paths:
   /admin/dashboard:
     get:
       summary: Get admin dashboard metrics
-      description: Returns comprehensive statistics for admin dashboard
+      description: Returns comprehensive statistics for admin dashboard with optional city filter
       tags:
         - Admin
       security:
         - bearerAuth: []
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+          description: Optional city filter to limit all figures to that city
       responses:
         '200':
           description: Dashboard metrics retrieved
@@ -319,6 +432,34 @@ paths:
                         properties:
                           pending_count:
                             type: integer
+                      by_city:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            city:
+                              type: string
+                            customers:
+                              type: integer
+                            active:
+                              type: integer
+                            purchases_today:
+                              type: integer
+                            purchases_this_month:
+                              type: integer
+                            purchase_value_today:
+                              type: number
+                            purchase_value_this_month:
+                              type: number
+                      by_tier:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            tier:
+                              type: string
+                            customer_count:
+                              type: integer
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -337,13 +478,14 @@ paths:
             schema:
               type: object
               required:
-                - customer_code
+                - customer
                 - purchase_amount
               properties:
-                customer_code:
+                customer:
                   type: string
                   minLength: 1
                   maxLength: 20
+                  description: Customer code or phone number
                 purchase_amount:
                   type: number
                   exclusiveMinimum: 0
@@ -387,14 +529,15 @@ paths:
             schema:
               type: object
               required:
-                - customer_code
+                - customer
                 - purchase_amount
                 - idempotency_key
               properties:
-                customer_code:
+                customer:
                   type: string
                   minLength: 1
                   maxLength: 20
+                  description: Customer code or phone number
                 purchase_amount:
                   type: number
                   exclusiveMinimum: 0
@@ -550,10 +693,193 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /admin/customers/cities:
+    get:
+      summary: Get customer cities
+      description: Returns distinct cities with customer counts for filter dropdown
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cities retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      cities:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            city:
+                              type: string
+                            customer_count:
+                              type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/customers/{identifier}/statement:
+    get:
+      summary: Get customer statement
+      description: Export customer statement as JSON or CSV
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: identifier
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Customer ID or phone number
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        '200':
+          description: Statement retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+            text/csv:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tiers:
+    get:
+      summary: Get loyalty tiers
+      description: Returns all loyalty tiers with their configuration
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tiers retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tiers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                            min_lifetime_purchases:
+                              type: number
+                            point_value_tzs:
+                              type: number
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tiers/{tierId}:
+    put:
+      summary: Update loyalty tier
+      description: Update tier configuration and recalculate all customer tiers
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - min_lifetime_purchases
+                - point_value_tzs
+              properties:
+                min_lifetime_purchases:
+                  type: number
+                  minimum: 0
+                point_value_tzs:
+                  type: number
+                  minimum: 0
+                  exclusiveMinimum: true
+      responses:
+        '200':
+          description: Tier updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+        '400':
+          description: Invalid tier configuration (e.g., ordering violation)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /admin/customers:
     get:
       summary: List customers
-      description: List customers with search, status filter, and pagination
+      description: List customers with search, status, city, tier filters, near_deadline, and pagination
       tags:
         - Admin
       security:
@@ -568,10 +894,21 @@ paths:
           schema:
             type: string
             enum: [active, inactive]
+        - name: city
+          in: query
+          schema:
+            type: string
+          description: Case-insensitive exact match on customer city
+        - name: tier
+          in: query
+          schema:
+            type: string
+          description: Filter by tier name (Bronze, Silver, Gold, Platinum)
         - name: near_deadline
           in: query
           schema:
             type: boolean
+          description: Active customers whose deadline is within 5 days
         - name: page
           in: query
           schema:
@@ -1274,6 +1611,26 @@ components:
         last_transaction_at:
           type: string
           nullable: true
+        city:
+          type: string
+          nullable: true
+        tier_id:
+          type: string
+          format: uuid
+          nullable: true
+        tier:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            min_lifetime_purchases:
+              type: number
+            point_value_tzs:
+              type: number
         created_at:
           type: string
         updated_at:

@@ -32,18 +32,18 @@ export async function authMiddleware(
     }
 
     // Verify token with backend JWT or Supabase Auth
-    let userObj: { id: string; phone?: string } | null = null;
+    let userObj: { id: string; phone?: string; email?: string } | null = null;
     try {
       const decoded = jwt.verify(token, env.JWT_SECRET) as any;
       if (decoded?.id) {
-        userObj = { id: decoded.id, phone: decoded.phone };
+        userObj = { id: decoded.id, phone: decoded.phone, email: decoded.email };
       }
     } catch {
       // Fallback: check with Supabase Auth
       try {
         const { data: authData, error: authError } = await supabase.auth.getUser(token);
         if (!authError && authData?.user) {
-          userObj = authData.user;
+          userObj = { id: authData.user.id, phone: authData.user.phone, email: authData.user.email };
         }
       } catch {}
     }
@@ -57,8 +57,8 @@ export async function authMiddleware(
     // Load profile from the database
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("*")
-      .eq("id", req.user.id)
+      .select("*, customers(*)")
+      .eq("id", (req.user as any).id)
       .maybeSingle();
 
     if (profileError) {
@@ -75,15 +75,11 @@ export async function authMiddleware(
         );
       }
 
+      // Extract customer data from the nested select
+      const customerData = (profileData as any).customers || null;
+      delete (profileData as any).customers;
+
       req.profile = profileData as Profile;
-
-      // If customer profile exists, load customer record
-      const { data: customerData } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("profile_id", req.user.id)
-        .maybeSingle();
-
       req.customer = (customerData as Customer) || null;
     } else {
       // User has verified OTP in Supabase Auth but hasn't completed registration yet

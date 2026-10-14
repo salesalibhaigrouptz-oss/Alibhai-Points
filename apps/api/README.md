@@ -138,9 +138,98 @@ Completes registration after OTP verification.
 
 ### Customer Endpoints
 
+#### Get Customer Profile
+```
+GET /api/customer/me
+```
+
+Returns the authenticated customer's profile.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "customer_code": "JD01",
+    "initials": "JD",
+    "sequence_number": 1,
+    "status": "active",
+    "points_balance": 1000,
+    "city": "Dar es Salaam",
+    "tier": {
+      "id": "uuid",
+      "name": "Silver",
+      "min_lifetime_purchases": 10000000,
+      "point_value_tzs": 120
+    },
+    "profile": {
+      "id": "uuid",
+      "full_name": "John Doe",
+      "phone": "+255712000001"
+    }
+  }
+}
+```
+
+#### Get Points Summary
+```
+GET /api/customer/me/points
+```
+
+Returns customer's points breakdown with tier-based TZS values.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "customer_code": "JD01",
+    "status": "active",
+    "total_points": 1000,
+    "redeemable_points": 50,
+    "waiting_points": 950,
+    "requested_points": 0,
+    "redeemed_points": 0,
+    "expired_points": 0,
+    "next_unlock_at": "2024-12-30T00:00:00Z",
+    "activity_deadline": "2024-10-26T00:00:00Z",
+    "days_left": 25,
+    "point_value_tzs": 120,
+    "total_value_tzs": 120000
+  }
+}
+```
+
+#### Get Recent Activity
+```
+GET /api/customer/me/recent-activity
+```
+
+Returns the last 5 transactions (purchases and redemptions) for the customer.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "activity": [
+      {
+        "type": "purchase",
+        "reference": "TXN-241001-ABC123",
+        "amount_tzs": 50000,
+        "points": 50,
+        "status": "completed",
+        "date": "2024-10-01T12:00:00Z"
+      }
+    ]
+  }
+}
+```
+
 #### Create Redemption Request
 ```
-POST /api/customer/redemptions
+POST /api/customer/me/redemptions
 ```
 
 Customer requests to redeem points.
@@ -160,73 +249,51 @@ Customer requests to redeem points.
     "redemption_id": "uuid",
     "reference": "RDM-241001-ABC123",
     "status": "pending",
-    "points": 50
+    "points": 50,
+    "point_value_tzs": 120,
+    "value_tzs": 6000
   }
 }
 ```
 
-#### Get Customer Purchases
+#### List Customer Redemptions
 ```
-GET /api/customer/purchases?page=1&limit=20
+GET /api/customer/me/redemptions
 ```
 
-Returns paginated list of customer's purchases.
+Returns all redemptions for the authenticated customer.
 
 **Response:**
 ```json
 {
   "success": true,
   "data": {
-    "purchases": [
+    "redemptions": [
       {
         "id": "uuid",
-        "transaction_reference": "TXN-241001-XYZ789",
-        "purchase_amount": 50000,
-        "points_earned": 50,
-        "amount_per_point_used": 1000,
+        "redemption_reference": "RDM-241001-ABC123",
+        "points_redeemed": 50,
         "status": "completed",
-        "purchased_at": "2024-10-01T12:00:00Z",
-        "created_at": "2024-10-01T12:00:00Z"
+        "redeemed_at": "2024-10-01T12:00:00Z",
+        "completed_at": "2024-10-01T12:30:00Z",
+        "point_redemption_items": [
+          {
+            "id": "uuid",
+            "product_name": "Item Name",
+            "quantity": 1,
+            "points": 50
+          }
+        ]
       }
-    ],
-    "pagination": {
-      "page": 1,
-      "page_size": 20,
-      "total": 1,
-      "total_pages": 1,
-      "has_next": false,
-      "has_prev": false
-    }
+    ]
   }
 }
 ```
 
-#### Get Points Summary
-```
-GET /api/customer/points/summary
-```
-
-Returns customer's points breakdown.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "customer_code": "JD01",
-    "status": "active",
-    "total_points": 1000,
-    "redeemable_points": 50,
-    "waiting_points": 950,
-    "requested_points": 0,
-    "redeemed_points": 0,
-    "expired_points": 0,
-    "next_unlock_at": "2024-12-30T00:00:00Z",
-    "activity_deadline": "2024-10-26T00:00:00Z",
-    "days_left": 25
-  }
-}
-```
+**Legacy Endpoints (compatibility):**
+- `GET /api/customer/points/summary` (same as `/me/points`)
+- `POST /api/customer/redemptions` (same as `/me/redemptions`)
+- `GET /api/customer/redemptions` (same as `/me/redemptions`)
 
 ---
 
@@ -234,10 +301,10 @@ Returns customer's points breakdown.
 
 #### Dashboard Metrics
 ```
-GET /api/admin/dashboard
+GET /api/admin/dashboard?city=Dar es Salaam
 ```
 
-Returns comprehensive statistics for admin dashboard.
+Returns comprehensive statistics for admin dashboard with optional city filter.
 
 **Response:**
 ```json
@@ -270,7 +337,28 @@ Returns comprehensive statistics for admin dashboard.
     },
     "redemptions": {
       "pending_count": 5
-    }
+    },
+    "by_city": [
+      {
+        "city": "Dar es Salaam",
+        "customers": 100,
+        "active": 95,
+        "purchases_today": 5,
+        "purchases_this_month": 200,
+        "purchase_value_today": 250000,
+        "purchase_value_this_month": 10000000
+      }
+    ],
+    "by_tier": [
+      {
+        "tier": "Bronze",
+        "customer_count": 80
+      },
+      {
+        "tier": "Silver",
+        "customer_count": 50
+      }
+    ]
   }
 }
 ```
@@ -285,7 +373,7 @@ Preview points calculation without recording purchase.
 **Request Body:**
 ```json
 {
-  "customer_code": "JD01",
+  "customer": "JD01",
   "purchase_amount": 50000
 }
 ```
@@ -297,6 +385,7 @@ Preview points calculation without recording purchase.
   "data": {
     "customer_name": "John Doe",
     "customer_status": "active",
+    "customer_tier": "Silver",
     "points_earned": 50,
     "amount_per_point": 1000
   }
@@ -308,12 +397,12 @@ Preview points calculation without recording purchase.
 POST /api/admin/purchases
 ```
 
-Record a purchase for a customer and award points.
+Record a purchase for a customer and award points. Accepts customer code or phone number.
 
 **Request Body:**
 ```json
 {
-  "customer_code": "JD01",
+  "customer": "JD01",
   "purchase_amount": 50000,
   "idempotency_key": "uuid-v4-string"
 }
@@ -324,9 +413,9 @@ Record a purchase for a customer and award points.
 {
   "success": true,
   "data": {
-    "reference": "TXN-241001-ABC123",
+    "transaction_reference": "TXN-241001-ABC123",
     "points_earned": 50,
-    "new_balance": 1050,
+    "points_balance": 1050,
     "customer_status": "active",
     "duplicate": false,
     "purchase_id": "uuid"
@@ -417,10 +506,196 @@ Void a mistaken purchase (only if points are unused).
 
 #### List Customers
 ```
-GET /api/admin/customers?search=John&status=active&near_deadline=true&page=1&limit=20
+GET /api/admin/customers?search=John&status=active&city=Dar es Salaam&tier=Silver&near_deadline=true&page=1&limit=20
 ```
 
-List customers with search, status filter, and pagination.
+List customers with search, status, city, tier filters, near_deadline, and pagination.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "customers": [
+      {
+        "id": "uuid",
+        "customer_code": "JD01",
+        "initials": "JD",
+        "sequence_number": 1,
+        "status": "active",
+        "points_balance": 1000,
+        "city": "Dar es Salaam",
+        "tier": "Silver",
+        "last_transaction_at": "2024-10-01T12:00:00Z",
+        "created_at": "2024-10-01T10:00:00Z",
+        "updated_at": "2024-10-01T12:00:00Z",
+        "profiles": {
+          "id": "uuid",
+          "full_name": "John Doe",
+          "phone": "+255712000001",
+          "is_active": true
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total": 1,
+      "total_pages": 1,
+      "has_next": false,
+      "has_prev": false
+    }
+  }
+}
+```
+
+#### Get Customer Cities
+```
+GET /api/admin/customers/cities
+```
+
+Returns distinct cities with customer counts for filter dropdown.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "cities": [
+      {
+        "city": "Dar es Salaam",
+        "customer_count": 100
+      },
+      {
+        "city": "Arusha",
+        "customer_count": 50
+      }
+    ]
+  }
+}
+```
+
+#### Get Customer Statement
+```
+GET /api/admin/customers/{identifier}/statement?from=2024-10-01&to=2024-10-31&format=json|csv
+```
+
+Export customer statement as JSON or CSV. Identifier can be customer ID or phone.
+
+**JSON Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "customer": {
+      "id": "uuid",
+      "customer_code": "JD01",
+      "full_name": "John Doe",
+      "phone": "+255712000001",
+      "city": "Dar es Salaam",
+      "tier": "Silver"
+    },
+    "entries": [
+      {
+        "date": "2024-10-01T12:00:00Z",
+        "type": "purchase",
+        "reference": "TXN-241001-ABC123",
+        "amount_tzs": 50000,
+        "points": 50,
+        "value_tzs": 50000,
+        "status": "completed",
+        "note": null
+      }
+    ],
+    "totals": {
+      "total_purchases": 50000,
+      "total_points_earned": 50,
+      "total_points_redeemed": 0,
+      "total_purchase_value": 50000
+    }
+  }
+}
+```
+
+**CSV Response:** UTF-8 with BOM, filename `statement-JD01-20241001.csv`, columns: date, type, reference, amount_tzs, points, value_tzs, status, note
+
+#### Get Loyalty Tiers
+```
+GET /api/admin/tiers
+```
+
+Returns all loyalty tiers with their configuration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "tiers": [
+      {
+        "id": "uuid",
+        "name": "Bronze",
+        "min_lifetime_purchases": 0,
+        "point_value_tzs": 100
+      },
+      {
+        "id": "uuid",
+        "name": "Silver",
+        "min_lifetime_purchases": 10000000,
+        "point_value_tzs": 120
+      },
+      {
+        "id": "uuid",
+        "name": "Gold",
+        "min_lifetime_purchases": 50000000,
+        "point_value_tzs": 150
+      },
+      {
+        "id": "uuid",
+        "name": "Platinum",
+        "min_lifetime_purchases": 100000000,
+        "point_value_tzs": 200
+      }
+    ]
+  }
+}
+```
+
+#### Update Loyalty Tier
+```
+PUT /api/admin/tiers/{tierId}
+```
+
+Update tier configuration and recalculate all customer tiers.
+
+**Request Body:**
+```json
+{
+  "min_lifetime_purchases": 5000000,
+  "point_value_tzs": 115
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Loyalty tier updated successfully"
+  }
+}
+```
+
+**Error Response (if tier ordering violated):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TIER_ORDER_VIOLATION",
+    "message": "Tier min_lifetime_purchases must be unique"
+  }
+}
+```
 
 **Response:**
 ```json
@@ -816,9 +1091,14 @@ Retrieve audit logs with filters and pagination.
 
 ## Business Rules
 
-### Point Calculation
-- **Rule**: TZS 1,000 = 1 point
-- **Example**: TZS 50,000 purchase = 50 points
+### Point Calculation & Loyalty Tiers
+- **Rule**: Point value is determined by customer's loyalty tier
+- **Bronze** (0 TZS lifetime): TZS 100 per point
+- **Silver** (10M TZS lifetime): TZS 120 per point
+- **Gold** (50M TZS lifetime): TZS 150 per point
+- **Platinum** (100M TZS lifetime): TZS 200 per point
+- **Example**: TZS 50,000 purchase for Silver customer = 417 points (50,000 / 120)
+- **Tier Upgrade**: Automatic when lifetime purchases cross threshold
 
 ### Point Maturity
 - **Rule**: Points become redeemable after 90 days

@@ -36,7 +36,8 @@ export class AuthController {
     try {
       const { phone, pin } = req.body;
       const fullName = req.body.fullName || req.body.full_name || "";
-      const result = await authService.signup(fullName, phone, pin);
+      const city = req.body.city || "";
+      const result = await authService.signup(fullName, phone, pin, city);
       sendSuccess(res, result, 201);
     } catch (error) {
       next(error);
@@ -70,22 +71,14 @@ export class AuthController {
         registered: true,
         role: profile.role,
         profile: {
-          id: profile.id,
           full_name: profile.full_name,
           phone: profile.phone,
-          role: profile.role,
-          is_active: profile.is_active,
-          created_at: profile.created_at,
         },
         customer: customer
           ? {
-              id: customer.id,
               customer_code: customer.customer_code,
-              initials: customer.initials,
-              sequence_number: customer.sequence_number,
-              status: customer.status,
-              points_balance: customer.points_balance,
-              last_transaction_at: customer.last_transaction_at,
+              city: customer.city,
+              tier: customer.tier,
             }
           : null,
       });
@@ -108,12 +101,19 @@ export class AuthController {
         throw new AppError(401, "UNAUTHORIZED", "Authentication required");
       }
 
-      const { full_name } = req.body;
-      const phone = user.phone || "";
+      const profile = req.profile;
+      if (profile && profile.role === "admin") {
+        throw new AppError(403, "NOT_A_CUSTOMER", "Only customers can complete registration");
+      }
+
+      const { full_name, city } = req.body;
+      // Use phone from profile or user
+      const phone = profile?.phone || user.phone || "";
       const result = await authService.completeRegistration(
         user.id,
         full_name,
-        phone
+        phone,
+        city
       );
 
       const statusCode = result.created ? 201 : 200;

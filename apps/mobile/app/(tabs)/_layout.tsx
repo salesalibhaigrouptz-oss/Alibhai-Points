@@ -15,37 +15,39 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/services/auth-context';
+import { useTranslation } from 'react-i18next';
 
 // IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
 // NativeTabs intentionally does NOT use custom design tokens — liquid glass
 // is a system-level appearance provided by iOS and cannot be overridden.
 // Custom brand colors are applied only on the ClassicTabLayout path (older iOS / Android / web).
 function NativeTabLayout() {
+  const { t } = useTranslation();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon
           sf={{ default: 'house', selected: 'house.fill' }}
         />
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.home')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="points">
         <NativeTabs.Trigger.Icon
           sf={{ default: 'circle.grid.2x2', selected: 'circle.grid.2x2.fill' }}
         />
-        <NativeTabs.Trigger.Label>Points</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.points')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Icon
           sf={{ default: 'clock.arrow.circlepath', selected: 'clock.arrow.circlepath' }}
         />
-        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.history')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Icon
           sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
         />
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.profile')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -53,6 +55,7 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
+  const { t } = useTranslation();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const isDark = colorScheme === 'dark';
@@ -95,7 +98,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('tabs.home'),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="house" tintColor={color} size={24} />
@@ -107,7 +110,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="points"
         options={{
-          title: 'Points',
+          title: t('tabs.points'),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="circle.grid.2x2" tintColor={color} size={24} />
@@ -119,7 +122,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: 'History',
+          title: t('tabs.history'),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="clock.arrow.circlepath" tintColor={color} size={24} />
@@ -131,7 +134,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('tabs.profile'),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="person.crop.circle" tintColor={color} size={24} />

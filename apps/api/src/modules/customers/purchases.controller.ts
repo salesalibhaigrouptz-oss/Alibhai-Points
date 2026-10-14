@@ -8,9 +8,7 @@ export class CustomerPurchasesController {
    * GET /api/customer/me/points
    *
    * Returns points summary for the authenticated customer.
-   * Calls get_points_summary RPC which returns:
-   * - total, redeemable, waiting, requested, redeemed, expired
-   * - next unlock date, status, activity deadline, days left
+   * Calls get_points_summary RPC which returns all fields including TZS values.
    */
   async getPointsSummary(
     req: Request,
@@ -42,12 +40,13 @@ export class CustomerPurchasesController {
   }
 
   /**
-   * GET /api/customer/me/purchases
+   * GET /api/customer/me/recent-activity
    *
-   * Returns purchases for the authenticated customer, paginated, newest first.
+   * Returns the last 5 transactions (purchases and redemptions) for the authenticated customer.
+   * Calls get_recent_activity RPC which returns at most 5 items.
    */
-  async getCustomerPurchases(
-    req: Request<{}, {}, {}, { page?: string; limit?: string }>,
+  async getRecentActivity(
+    req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -57,45 +56,21 @@ export class CustomerPurchasesController {
         throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer record not found");
       }
 
-      const { page = "1", limit = "20" } = req.query;
-
-      const pageNum = parseInt(page, 10);
-      const limitNum = parseInt(limit, 10);
-      const offset = (pageNum - 1) * limitNum;
-
-      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
-        throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters");
-      }
-
-      const { data, error, count } = await supabase
-        .from("purchases")
-        .select(`
-          id,
-          transaction_reference,
-          purchase_amount,
-          points_earned,
-          amount_per_point_used,
-          status,
-          purchased_at,
-          created_at
-        `, { count: "exact" })
-        .eq("customer_id", customer.id)
-        .order("purchased_at", { ascending: false })
-        .range(offset, offset + limitNum - 1);
+      const { data, error } = await supabase.rpc("get_recent_activity", {
+        p_customer_id: customer.id,
+      });
 
       if (error) {
-        throw new AppError(500, "DATABASE_ERROR", error.message);
+        throw new AppError(500, "RPC_ERROR", error.message);
       }
 
-      sendSuccess(res, {
-        purchases: data,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: count || 0,
-          pages: Math.ceil((count || 0) / limitNum),
-        },
-      });
+      if (!data) {
+        // Return empty array if no activity
+        sendSuccess(res, []);
+        return;
+      }
+
+      sendSuccess(res, data);
     } catch (error) {
       next(error);
     }

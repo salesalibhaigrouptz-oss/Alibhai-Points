@@ -41,3 +41,14 @@ export const updatePointRulesSchema = z.object({
 }).strict();
 
 export type UpdatePointRulesInput = z.infer<typeof updatePointRulesSchema>;
+
+export const updateLoyaltyTierSchema = z.object({
+  min_lifetime_purchases: z
+    .number({ required_error: "min_lifetime_purchases is required" })
+    .positive({ message: "min_lifetime_purchases must be positive" }),
+  point_value_tzs: z
+    .number({ required_error: "point_value_tzs is required" })
+    .positive({ message: "point_value_tzs must be positive" }),
+}).strict();
+
+export type UpdateLoyaltyTierInput = z.infer<typeof updateLoyaltyTierSchema>;

@@ -267,7 +267,13 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
     expect(res.body.data.customer_code).toBe("TC01");
 
     // Confirm updateUserById was called with the customer's auth user id
-    expect(updateSpy).toHaveBeenCalledWith("u-cust-001", { password: "987654" });
+    // The new implementation also stores a hashed PIN in user_metadata for security
+    expect(updateSpy).toHaveBeenCalledWith("u-cust-001", {
+      password: "987654",
+      user_metadata: expect.objectContaining({
+        pin_hash: expect.any(String),
+      }),
+    });
   });
 
   it("should never include the PIN value in the response body", async () => {

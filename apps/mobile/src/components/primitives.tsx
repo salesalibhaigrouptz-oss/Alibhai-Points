@@ -370,10 +370,12 @@ export function ErrorState({
 export function LabelValue({
   label,
   value,
+  subvalue,
   icon,
 }: {
   label: string;
   value: string;
+  subvalue?: string;
   icon?: ComponentProps<typeof Feather>["name"];
 }) {
   const colors = useColors();
@@ -383,7 +385,10 @@ export function LabelValue({
         {icon ? <Feather name={icon} size={15} color={colors.mutedForeground} /> : null}
         <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
       </View>
-      <Text style={[styles.value, { color: colors.foreground }]}>{value}</Text>
+      <View style={styles.labelValueValues}>
+        <Text style={[styles.value, { color: colors.foreground }]}>{value}</Text>
+        {subvalue ? <Text style={[styles.subvalue, { color: colors.mutedForeground }]}>{subvalue}</Text> : null}
+      </View>
     </View>
   );
 }
@@ -453,5 +458,7 @@ const styles = StyleSheet.create({
   labelValue: { gap: 7 },
   labelValueTitle: { flexDirection: "row", alignItems: "center", gap: 6 },
   label: { fontSize: 12 },
+  labelValueValues: { alignItems: "flex-end", gap: 2 },
   value: { fontSize: 15, fontWeight: "600" },
+  subvalue: { fontSize: 12 },
 });

@@ -71,25 +71,18 @@ describe("Identity Endpoints (GET /api/me & GET /api/customer/me)", () => {
                 is_active: true,
                 created_at: "2026-01-01T00:00:00Z",
                 updated_at: "2026-01-01T00:00:00Z",
-              },
-              error: null,
-            }),
-          } as any;
-        }
-        if (table === "customers") {
-          return {
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-              data: {
-                id: "c-uuid-1",
-                profile_id: "u-registered",
-                customer_code: "IS01",
-                initials: "IS",
-                sequence_number: 1,
-                status: "active",
-                points_balance: 150,
-                last_transaction_at: "2026-01-05T00:00:00Z",
+                customers: {
+                  id: "c-uuid-1",
+                  profile_id: "u-registered",
+                  customer_code: "AG01",
+                  initials: "AG",
+                  sequence_number: 1,
+                  city: "Arusha",
+                  tier: "Bronze",
+                  status: "active",
+                  points_balance: 150,
+                  last_transaction_at: "2026-01-05T00:00:00Z",
+                },
               },
               error: null,
             }),
@@ -107,8 +100,9 @@ describe("Identity Endpoints (GET /api/me & GET /api/customer/me)", () => {
       expect(res.body.data.registered).toBe(true);
       expect(res.body.data.role).toBe("customer");
       expect(res.body.data.profile.full_name).toBe("Ibrahim Said");
-      expect(res.body.data.customer.customer_code).toBe("IS01");
-      expect(res.body.data.customer.points_balance).toBe(150);
+      expect(res.body.data.customer.customer_code).toBe("AG01");
+      expect(res.body.data.customer.city).toBe("Arusha");
+      expect(res.body.data.customer.tier).toBe("Bronze");
     });
   });
 
@@ -140,7 +134,7 @@ describe("Identity Endpoints (GET /api/me & GET /api/customer/me)", () => {
 
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.code).toBe("REGISTRATION_REQUIRED");
+      expect(res.body.error.code).toBe("NOT_A_CUSTOMER");
     });
 
     it("should return customer details for verified active customer", async () => {
@@ -172,26 +166,19 @@ describe("Identity Endpoints (GET /api/me & GET /api/customer/me)", () => {
                 is_active: true,
                 created_at: "2026-01-01T00:00:00Z",
                 updated_at: "2026-01-01T00:00:00Z",
-              },
-              error: null,
-            }),
-          } as any;
-        }
-        if (table === "customers") {
-          return {
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-              data: {
-                id: "c-uuid-1",
-                profile_id: "u-customer",
-                customer_code: "IS01",
-                initials: "IS",
-                sequence_number: 1,
-                status: "active",
-                points_balance: 200,
-                last_transaction_at: null,
-                created_at: "2026-01-01T00:00:00Z",
+                customers: {
+                  id: "c-uuid-1",
+                  profile_id: "u-customer",
+                  customer_code: "AG01",
+                  initials: "AG",
+                  sequence_number: 1,
+                  city: "Arusha",
+                  tier: "Bronze",
+                  status: "active",
+                  points_balance: 200,
+                  last_transaction_at: null,
+                  created_at: "2026-01-01T00:00:00Z",
+                },
               },
               error: null,
             }),
@@ -206,7 +193,7 @@ describe("Identity Endpoints (GET /api/me & GET /api/customer/me)", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.customer.customer_code).toBe("IS01");
+      expect(res.body.data.customer.customer_code).toBe("AG01");
       expect(res.body.data.customer.points_balance).toBe(200);
       expect(res.body.data.profile.full_name).toBe("Ibrahim Said");
     });

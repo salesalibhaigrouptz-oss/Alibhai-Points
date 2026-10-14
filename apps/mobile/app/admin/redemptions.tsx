@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, TextInput, Modal } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useRedemptions, useCompleteRedemption, useCancelRedemption } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
 
-const formatDate = (dateString: string | null) => {
-  if (!dateString) return 'Never';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
 export default function RedemptionsList() {
+  const { t } = useTranslation();
   const { data: redemptionsData, isLoading, error, refetch } = useRedemptions({ limit: 50 });
   const redemptions = redemptionsData?.redemptions || [];
   
@@ -20,21 +16,27 @@ export default function RedemptionsList() {
   const [selectedRedemption, setSelectedRedemption] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
 
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return t('common.never');
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   const handleComplete = (redemption: any) => {
     Alert.alert(
-      'Complete Redemption',
-      `Are you sure you want to complete this redemption for ${redemption.points} points?`,
+      t('admin.redemptions.completeRedemption'),
+      t('admin.redemptions.completeConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Complete',
+          text: t('admin.redemptions.complete'),
           style: 'destructive',
           onPress: async () => {
             try {
               await completeMutation.mutateAsync(redemption.id);
-              Alert.alert('Success', 'Redemption completed successfully');
+              Alert.alert(t('common.done'), t('admin.redemptions.completeSuccess'));
             } catch (err) {
-              Alert.alert('Error', apiErrorMessage(err));
+              Alert.alert(t('common.error'), apiErrorMessage(err));
             }
           },
         },
@@ -59,9 +61,9 @@ export default function RedemptionsList() {
       setCancelModalVisible(false);
       setSelectedRedemption(null);
       setCancelReason('');
-      Alert.alert('Success', 'Redemption cancelled successfully');
+      Alert.alert(t('common.done'), t('admin.redemptions.cancelSuccess'));
     } catch (err) {
-      Alert.alert('Error', apiErrorMessage(err));
+      Alert.alert(t('common.error'), apiErrorMessage(err));
     }
   };
 
@@ -71,19 +73,19 @@ export default function RedemptionsList() {
         <Text style={styles.id}>{redemption.redemption_reference}</Text>
         <Text style={styles.date}>{formatDate(redemption.redeemed_at)}</Text>
       </View>
-      <Text style={styles.customer}>{redemption.customers?.profiles?.full_name || 'Unknown'}</Text>
-      <Text style={styles.customerId}>{redemption.customers?.customer_code || 'Unknown'}</Text>
+      <Text style={styles.customer}>{redemption.customers?.profiles?.full_name || t('common.unknown')}</Text>
+      <Text style={styles.customerId}>{redemption.customers?.customer_code || t('common.unknown')}</Text>
       <View style={styles.pointsRow}>
-        <Text style={styles.points}>-{redemption.points_redeemed} pts</Text>
+        <Text style={styles.points}>-{redemption.points_redeemed} {t('common.pts')}</Text>
         <View style={[styles.statusBadge, redemption.status === 'completed' ? styles.statusCompleted : redemption.status === 'pending' ? styles.statusPending : styles.statusCancelled]}>
           <Text style={[styles.statusText, redemption.status === 'completed' ? styles.statusTextCompleted : redemption.status === 'pending' ? styles.statusTextPending : styles.statusTextCancelled]}>
-            {redemption.status}
+            {redemption.status === 'completed' ? t('admin.redemptions.completed') : redemption.status === 'pending' ? t('admin.redemptions.pending') : t('admin.redemptions.cancelled')}
           </Text>
         </View>
       </View>
       <Text style={styles.reference}>Ref: {redemption.redemption_reference}</Text>
       {redemption.processed_by && (
-        <Text style={styles.processedBy}>Processed by: {redemption.processed_by}</Text>
+        <Text style={styles.processedBy}>{t('admin.redemptions.processedBy')}: {redemption.processed_by}</Text>
       )}
       {redemption.status === 'pending' && (
         <View style={styles.actionButtons}>
@@ -91,13 +93,13 @@ export default function RedemptionsList() {
             style={[styles.actionButton, styles.completeButton]}
             onPress={() => handleComplete(redemption)}
           >
-            <Text style={styles.actionButtonText}>Complete</Text>
+            <Text style={styles.actionButtonText}>{t('admin.redemptions.complete')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.cancelButton]}
             onPress={() => handleCancel(redemption)}
           >
-            <Text style={styles.actionButtonText}>Cancel</Text>
+            <Text style={styles.actionButtonText}>{t('admin.redemptions.cancel')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -115,9 +117,9 @@ export default function RedemptionsList() {
   if (error) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={styles.errorText}>Failed to load redemptions. Tap to retry.</Text>
+        <Text style={styles.errorText}>{t('admin.redemptions.failedLoad')}</Text>
         <TouchableOpacity onPress={() => refetch()}>
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{t('common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -135,7 +137,7 @@ export default function RedemptionsList() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No redemptions found</Text>
+            <Text style={styles.emptyText}>{t('admin.redemptions.empty')}</Text>
           </View>
         }
       />
@@ -149,14 +151,14 @@ export default function RedemptionsList() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Cancel Redemption</Text>
+            <Text style={styles.modalTitle}>{t('admin.redemptions.cancelRedemption')}</Text>
             <Text style={styles.modalSubtitle}>
-              Points: {selectedRedemption?.points_redeemed}
+              {t('admin.redemptions.points')}: {selectedRedemption?.points_redeemed}
             </Text>
-            <Text style={styles.modalLabel}>Reason (optional):</Text>
+            <Text style={styles.modalLabel}>{t('admin.purchases.voidReason')}:</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter reason..."
+              placeholder="..."
               value={cancelReason}
               onChangeText={setCancelReason}
               multiline
@@ -168,7 +170,7 @@ export default function RedemptionsList() {
                 onPress={() => setCancelModalVisible(false)}
                 disabled={cancelMutation.isPending}
               >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                <Text style={styles.modalCancelButtonText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalConfirmButton, cancelMutation.isPending && styles.buttonDisabled]}
@@ -178,7 +180,7 @@ export default function RedemptionsList() {
                 {cancelMutation.isPending ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text style={styles.modalConfirmButtonText}>Confirm Cancel</Text>
+                  <Text style={styles.modalConfirmButtonText}>{t('admin.redemptions.cancel')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -252,10 +254,16 @@ const styles = StyleSheet.create({
   statusApproved: {
     backgroundColor: '#E8F5E9',
   },
+  statusCompleted: {
+    backgroundColor: '#E8F5E9',
+  },
   statusPending: {
     backgroundColor: '#FFF3E0',
   },
   statusRejected: {
+    backgroundColor: '#FFEBEE',
+  },
+  statusCancelled: {
     backgroundColor: '#FFEBEE',
   },
   statusText: {
@@ -265,10 +273,16 @@ const styles = StyleSheet.create({
   statusTextApproved: {
     color: '#2E7D32',
   },
+  statusTextCompleted: {
+    color: '#2E7D32',
+  },
   statusTextPending: {
     color: '#F57C00',
   },
   statusTextRejected: {
+    color: '#C62828',
+  },
+  statusTextCancelled: {
     color: '#C62828',
   },
   reference: {
@@ -305,6 +319,15 @@ const styles = StyleSheet.create({
   loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#777777',
   },
   errorText: {
     fontSize: 16,

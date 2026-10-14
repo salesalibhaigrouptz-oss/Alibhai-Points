@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, Alert, TextInput, Modal, TouchableOpacity } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { usePurchases, useVoidPurchase } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
 
-const formatDate = (dateString: string | null) => {
-  if (!dateString) return 'Never';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
 export default function PurchasesList() {
+  const { t } = useTranslation();
   const { data: purchasesData, isLoading, error, refetch } = usePurchases({ limit: 50 });
   const purchases = purchasesData?.purchases || [];
   const voidMutation = useVoidPurchase();
@@ -17,6 +13,12 @@ export default function PurchasesList() {
   const [voidModalVisible, setVoidModalVisible] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
   const [voidReason, setVoidReason] = useState('');
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return t('common.never');
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   const handleVoidPurchase = (purchase: any) => {
     setSelectedPurchase(purchase);
@@ -26,7 +28,7 @@ export default function PurchasesList() {
 
   const confirmVoid = async () => {
     if (!selectedPurchase || !voidReason.trim()) {
-      Alert.alert('Error', 'Please provide a reason for voiding');
+      Alert.alert(t('common.error'), t('admin.purchases.voidReason'));
       return;
     }
 
@@ -38,9 +40,9 @@ export default function PurchasesList() {
       setVoidModalVisible(false);
       setSelectedPurchase(null);
       setVoidReason('');
-      Alert.alert('Success', 'Purchase voided successfully');
+      Alert.alert(t('common.done'), t('admin.purchases.voidSuccess'));
     } catch (err) {
-      Alert.alert('Error', apiErrorMessage(err));
+      Alert.alert(t('common.error'), apiErrorMessage(err));
     }
   };
 
@@ -50,18 +52,18 @@ export default function PurchasesList() {
         <Text style={styles.id}>{purchase.transaction_reference}</Text>
         <Text style={styles.date}>{formatDate(purchase.purchased_at)}</Text>
       </View>
-      <Text style={styles.customer}>{purchase.profiles?.full_name || 'Unknown'}</Text>
+      <Text style={styles.customer}>{purchase.profiles?.full_name || t('common.unknown')}</Text>
       <Text style={styles.customerId}>{purchase.customers?.customer_code}</Text>
       <View style={styles.amountRow}>
         <Text style={styles.amount}>TZS {purchase.purchase_amount.toLocaleString()}</Text>
-        <Text style={styles.points}>+{purchase.points_earned} pts</Text>
+        <Text style={styles.points}>+{purchase.points_earned} {t('common.pts')}</Text>
       </View>
       {purchase.status === 'completed' && (
         <TouchableOpacity
           style={styles.voidButton}
           onPress={() => handleVoidPurchase(purchase)}
         >
-          <Text style={styles.voidButtonText}>Void Purchase</Text>
+          <Text style={styles.voidButtonText}>{t('admin.purchases.voidPurchase')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -78,9 +80,9 @@ export default function PurchasesList() {
   if (error) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={styles.errorText}>Failed to load purchases. Tap to retry.</Text>
+        <Text style={styles.errorText}>{t('admin.purchases.failedLoad')}</Text>
         <TouchableOpacity onPress={() => refetch()}>
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{t('common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -98,7 +100,7 @@ export default function PurchasesList() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No purchases found</Text>
+            <Text style={styles.emptyText}>{t('admin.purchases.empty')}</Text>
           </View>
         }
       />
@@ -112,14 +114,14 @@ export default function PurchasesList() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Void Purchase</Text>
+            <Text style={styles.modalTitle}>{t('admin.purchases.voidPurchase')}</Text>
             <Text style={styles.modalSubtitle}>
               Reference: {selectedPurchase?.transaction_reference}
             </Text>
-            <Text style={styles.modalLabel}>Reason for voiding:</Text>
+            <Text style={styles.modalLabel}>{t('admin.purchases.voidReason')}:</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter reason..."
+              placeholder="..."
               value={voidReason}
               onChangeText={setVoidReason}
               multiline
@@ -131,7 +133,7 @@ export default function PurchasesList() {
                 onPress={() => setVoidModalVisible(false)}
                 disabled={voidMutation.isPending}
               >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                <Text style={styles.modalCancelButtonText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalConfirmButton, (!voidReason.trim() || voidMutation.isPending) && styles.buttonDisabled]}
@@ -141,7 +143,7 @@ export default function PurchasesList() {
                 {voidMutation.isPending ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text style={styles.modalConfirmButtonText}>Void</Text>
+                  <Text style={styles.modalConfirmButtonText}>{t('admin.purchases.void')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -230,6 +232,15 @@ const styles = StyleSheet.create({
   loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#777777',
   },
   errorText: {
     fontSize: 16,

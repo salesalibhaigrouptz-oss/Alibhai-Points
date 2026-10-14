@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,12 +35,15 @@ import {
   formatTzs,
   type UserProfile,
 } from "@/services/api";
+import { useErrorTranslation } from "@/services/error-translations";
+import { useFormattedValues } from "@/utils/formatting";
+import { LanguageToggle } from "@/components/language-toggle";
 import {
   useCustomerPointsSummary,
   useCreateCustomerRedemption,
-  useMyPurchases,
   useMyRedemptions,
   useMe,
+  useRecentActivity,
 } from "@/services/hooks";
 
 type CustomerRedemption = {
@@ -47,6 +51,7 @@ type CustomerRedemption = {
   points?: number;
   status?: string;
   reference?: string;
+  value_tzs?: number;
 };
 
 type PointsSummary = {
@@ -55,9 +60,25 @@ type PointsSummary = {
   total_points?: number;
   redeemable_points?: number;
   waiting_points?: number;
+  requested_points?: number;
+  redeemed_points?: number;
   expired_points?: number;
+  redeemable_value_tzs?: number;
+  waiting_value_tzs?: number;
+  point_value_tzs?: number;
+  tier?: string;
+  lifetime_purchases?: number;
+  next_tier?: string | null;
+  next_tier_remaining_tzs?: number | null;
+  next_tier_point_value_tzs?: number | null;
+  pending_request?: {
+    points: number;
+    value_tzs: number;
+    reference: string;
+  } | null;
   next_unlock_at?: string | null;
   activity_deadline?: string | null;
+  days_left?: number | null;
 };
 
 const getGetCustomerDashboardQueryKey = () => ["customer", "points-summary"];
@@ -70,103 +91,27 @@ function fallbackSummary(me?: UserProfile): PointsSummary {
     total_points: Number(me?.customer?.points_balance ?? 0),
     redeemable_points: 0,
     waiting_points: 0,
+    requested_points: 0,
+    redeemed_points: 0,
     expired_points: 0,
+    redeemable_value_tzs: 0,
+    waiting_value_tzs: 0,
+    point_value_tzs: 100,
+    tier: "Bronze",
+    lifetime_purchases: 0,
+    next_tier: "Silver",
+    next_tier_remaining_tzs: 10000000,
+    next_tier_point_value_tzs: 120,
+    pending_request: null,
     next_unlock_at: null,
     activity_deadline: null,
+    days_left: null,
   };
 }
 
-function toDashboard(summary: PointsSummary, me?: UserProfile) {
-  const fullName = me?.profile?.full_name || "Customer";
-  const phoneNumber = me?.profile?.phone || "";
-  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
-  const status = summary.status || me?.customer?.status || "active";
-  const totalPoints = Number(summary.total_points) || 0;
-  const redeemablePoints = Number(summary.redeemable_points) || 0;
-  const pendingPoints = Number(summary.waiting_points) || 0;
-  const unusedPointsExpired = (Number(summary.expired_points) || 0) > 0;
 
-  return {
-    totalPoints,
-    redeemablePoints,
-    pendingPoints,
-    customer: {
-      fullName,
-      customerId,
-      phoneNumber,
-      status,
-      unusedPointsExpired,
-    },
-    fullName,
-    customerId,
-    phoneNumber,
-    status,
-    unusedPointsExpired,
-    activityDeadline: summary.activity_deadline ?? null,
-    redemptionEligible: redeemablePoints > 0 && status === "active",
-    redemptionBlockedReason: status === "inactive" ? "Account is inactive" : null,
-    nextPointsAvailableAt: summary.next_unlock_at ?? null,
-  };
-}
 
-const useGetCustomerDashboard = (meData?: UserProfile) => {
-  const query = useCustomerPointsSummary();
-  const ready = !query.isPending || !!query.data || query.isError;
-  const summary = query.data ?? fallbackSummary(meData);
 
-  return {
-    data: ready ? toDashboard(summary, meData) : null,
-    isLoading: query.isLoading && !query.data,
-    isPending: query.isPending && !query.data && !query.isError,
-    isError: false,
-    error: query.error,
-    refetch: query.refetch,
-  };
-};
-
-const useListCustomerTransactions = () => {
-  const query = useMyPurchases();
-
-  return {
-    data: {
-      items:
-        query.data?.purchases?.map((p: any) => ({
-          id: p.id,
-          reference: p.transaction_reference,
-          purchaseAmount: p.purchase_amount,
-          pointsEarned: p.points_earned,
-          occurredAt: p.purchased_at,
-        })) || [],
-    },
-    isLoading: query.isLoading,
-    isPending: query.isPending && !query.isError,
-    isError: false,
-    error: query.error,
-    refetch: query.refetch,
-  };
-};
-
-const useListCustomerRedemptions = () => {
-  const query = useMyRedemptions();
-
-  return {
-    data: {
-      items:
-        query.data?.redemptions?.map((r: any) => ({
-          id: r.id,
-          reference: r.redemption_reference,
-          pointsRedeemed: r.points_redeemed,
-          status: r.status,
-          occurredAt: r.redeemed_at,
-        })) || [],
-    },
-    isLoading: query.isLoading,
-    isPending: query.isPending && !query.isError,
-    isError: false,
-    error: query.error,
-    refetch: query.refetch,
-  };
-};
 
 const useCreateRedemption = () => {
   const mutation = useCreateCustomerRedemption();
@@ -179,6 +124,7 @@ const useCreateRedemption = () => {
         reference: result.reference,
         status: result.status,
         points: result.points,
+        value_tzs: result.value_tzs,
       };
     },
     isPending: mutation.isPending,
@@ -186,6 +132,7 @@ const useCreateRedemption = () => {
 };
 
 function StatusPill({ active }: { active: boolean }) {
+  const { t } = useTranslation();
   const colors = useColors();
   return (
     <View
@@ -208,94 +155,22 @@ function StatusPill({ active }: { active: boolean }) {
           { color: active ? colors.success : colors.destructive },
         ]}
       >
-        {active ? "Active" : "Inactive"}
+        {active ? t('home.statusActive') : t('home.statusInactive')}
       </Text>
     </View>
   );
 }
 
-function PointsHero({
-  total,
-  redeemable,
-  pending,
-}: {
-  total: number;
-  redeemable: number;
-  pending: number;
-}) {
-  const colors = useColors();
-  return (
-    <View style={[styles.pointsHero, { backgroundColor: colors.primary }]}>
-      <View style={styles.heroTopline}>
-        <Text
-          style={[
-            styles.heroLabel,
-            { color: colors.primaryForeground, opacity: 0.82 },
-          ]}
-        >
-          Total points
-        </Text>
-        <Feather name="award" size={21} color={colors.primaryForeground} />
-      </View>
-      <Text style={[styles.heroTotal, { color: colors.primaryForeground }]}>
-        {formatPoints(total)}
-      </Text>
-      <View
-        style={[
-          styles.heroDivider,
-          { backgroundColor: colors.primaryForeground, opacity: 0.25 },
-        ]}
-      />
-      <View style={styles.heroStats}>
-        <View style={styles.heroStat}>
-          <Text
-            style={[styles.heroStatValue, { color: colors.primaryForeground }]}
-          >
-            {formatPoints(redeemable)}
-          </Text>
-          <Text
-            style={[
-              styles.heroStatLabel,
-              { color: colors.primaryForeground, opacity: 0.82 },
-            ]}
-          >
-            Redeemable
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.heroStatSeparator,
-            { backgroundColor: colors.primaryForeground, opacity: 0.25 },
-          ]}
-        />
-        <View style={styles.heroStat}>
-          <Text
-            style={[styles.heroStatValue, { color: colors.primaryForeground }]}
-          >
-            {formatPoints(pending)}
-          </Text>
-          <Text
-            style={[
-              styles.heroStatLabel,
-              { color: colors.primaryForeground, opacity: 0.82 },
-            ]}
-          >
-            Pending
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
 
 function InactiveNotice({ expired }: { expired: boolean }) {
+  const { t } = useTranslation();
   return (
     <InlineNotice
       tone="warning"
       message={
         expired
-          ? "This account is inactive. Previously unused points have expired."
-          : "This account is inactive. Contact Alibhai for help with your account."
+          ? t('home.inactiveNoticeExpired')
+          : t('home.inactiveNotice')
       }
     />
   );
@@ -356,72 +231,187 @@ function RecordCard({
 
 export function HomeScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { data: me } = useMe();
-  const query = useGetCustomerDashboard(me);
-  const data = query.data;
+  const summaryQuery = useCustomerPointsSummary();
+  const recentActivityQuery = useRecentActivity();
+  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
+  const recentActivity = recentActivityQuery.data || [];
+  const fullName = me?.profile?.full_name || "Customer";
+  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
+  const status = summary.status || me?.customer?.status || "active";
+  const tier = summary.tier || "Bronze";
+  const pointValueTzs = summary.point_value_tzs || 100;
+  const redeemablePoints = Number(summary.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
+  const waitingPoints = Number(summary.waiting_points) || 0;
+  const waitingValueTzs = Number(summary.waiting_value_tzs) || 0;
+  const nextTier = summary.next_tier;
+  const nextTierRemainingTzs = summary.next_tier_remaining_tzs;
+  const nextTierPointValueTzs = summary.next_tier_point_value_tzs;
+  const pendingRequest = summary.pending_request;
+  const activityDeadline = summary.activity_deadline;
+  const daysLeft = summary.days_left;
 
   return (
     <Page withTabs>
-      <PageHeading eyebrow="Alibhai Points" title="Your rewards at a glance" />
-      {query.isPending ? <LoadingState /> : null}
-      {query.isError ? (
+      <PageHeading eyebrow={t('home.brandEyebrow')} title={t('home.brandSubtitle')} />
+      {summaryQuery.isPending ? <LoadingState /> : null}
+      {summaryQuery.isError ? (
         <ErrorState
-          message={apiErrorMessage(query.error)}
-          onRetry={() => void query.refetch()}
+          message={apiErrorMessage(summaryQuery.error)}
+          onRetry={() => void summaryQuery.refetch()}
         />
       ) : null}
-      {data ? (
+      {!summaryQuery.isPending && !summaryQuery.isError ? (
         <>
           <View style={styles.greetingRow}>
             <View style={styles.greetingText}>
               <Text style={[styles.greeting, { color: colors.foreground }]}>
-                Habari, {data.customer.fullName.split(" ")[0]}
+                {t('home.greeting')}, {fullName.split(" ")[0]}
               </Text>
-              <Text style={[styles.customerId, { color: colors.mutedForeground }]}>
-                Customer ID · {data.customer.customerId}
+              <View style={styles.customerIdRow}>
+                <Text style={[styles.customerId, { color: colors.mutedForeground }]}>
+                  {t('home.customerId')} · {customerId}
+                </Text>
+                <View style={[styles.tierBadge, { backgroundColor: colors.accent }]}>
+                  <Text style={[styles.tierBadgeText, { color: colors.primary }]}>
+                    {tier}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.pointValueText, { color: colors.mutedForeground }]}>
+                {t('home.pointValue', { value: pointValueTzs })}
               </Text>
             </View>
-            <StatusPill active={data.customer.status === "active"} />
+            <StatusPill active={status === "active"} />
           </View>
-          {data.customer.status === "inactive" ? (
-            <InactiveNotice expired={data.customer.unusedPointsExpired} />
+
+          {pendingRequest ? (
+            <Card style={styles.pendingBanner}>
+              <View style={[styles.pendingIcon, { backgroundColor: colors.accent }]}>
+                <Feather name="clock" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.pendingContent}>
+                <Text style={[styles.pendingTitle, { color: colors.foreground }]}>
+                  {t('home.pendingWaitingOffice')}
+                </Text>
+                <Text style={[styles.pendingDetail, { color: colors.mutedForeground }]}>
+                  {pendingRequest.points} points = TZS {formatTzs(pendingRequest.value_tzs)}
+                </Text>
+                <Text style={[styles.pendingRef, { color: colors.mutedForeground }]}>
+                  {t('home.pendingReference', { reference: pendingRequest.reference })}
+                </Text>
+              </View>
+            </Card>
           ) : null}
-          <PointsHero
-            total={data.totalPoints}
-            redeemable={data.redeemablePoints}
-            pending={data.pendingPoints}
-          />
-          <Card style={styles.deadlineCard}>
-            <View style={[styles.deadlineIcon, { backgroundColor: colors.accent }]}>
-              <Feather name="calendar" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.deadlineCopy}>
-              <Text style={[styles.deadlineTitle, { color: colors.foreground }]}>
-                Stay active
-              </Text>
-              <Text style={[styles.deadlineBody, { color: colors.mutedForeground }]}>
-                {data.activityDeadline
-                  ? `Your activity deadline is ${formatDate(data.activityDeadline)}.`
-                  : "Your activity deadline will appear here when provided by Alibhai."}
-              </Text>
+
+          <Card style={styles.pointsCard}>
+            <View style={styles.pointsRow}>
+              <View style={styles.pointsColumn}>
+                <Text style={[styles.pointsLabel, { color: colors.foreground }]}>
+                  {t('points.redeemable')}
+                </Text>
+                <Text style={[styles.pointsValue, { color: colors.primary }]}>
+                  {formatPoints(redeemablePoints)}
+                </Text>
+                <Text style={[styles.pointsTzs, { color: colors.mutedForeground }]}>
+                  = TZS {formatTzs(redeemableValueTzs)}
+                </Text>
+              </View>
+              <View style={[styles.pointsDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.pointsColumn}>
+                <Text style={[styles.pointsLabel, { color: colors.mutedForeground }]}>
+                  {t('points.waiting')}
+                </Text>
+                <Text style={[styles.pointsValueSmall, { color: colors.mutedForeground }]}>
+                  {formatPoints(waitingPoints)}
+                </Text>
+                <Text style={[styles.pointsTzsSmall, { color: colors.mutedForeground }]}>
+                  = TZS {formatTzs(waitingValueTzs)}
+                </Text>
+              </View>
             </View>
           </Card>
-          {data.redemptionEligible ? null : data.redemptionBlockedReason ? (
-            <InlineNotice message={data.redemptionBlockedReason} />
+
+          {nextTier && nextTierRemainingTzs !== null ? (
+            <Card style={styles.tierProgressCard}>
+              <Text style={[styles.tierProgressTitle, { color: colors.foreground }]}>
+                {t('home.progressTo', { tier: nextTier })}
+              </Text>
+              <Text style={[styles.tierProgressSubtitle, { color: colors.mutedForeground }]}>
+                {t('home.spendMoreToReach', { amount: formatTzs(nextTierRemainingTzs || 0), tier: nextTier })}
+                {nextTierPointValueTzs ? ` (1 point = TZS ${nextTierPointValueTzs})` : ''}
+              </Text>
+            </Card>
+          ) : (
+            <Card style={styles.tierProgressCard}>
+              <Text style={[styles.tierProgressTitle, { color: colors.foreground }]}>
+                {t('home.topLevelReached')}
+              </Text>
+              <Text style={[styles.tierProgressSubtitle, { color: colors.mutedForeground }]}>
+                {t('home.topLevel')}
+              </Text>
+            </Card>
+          )}
+
+          {status === "inactive" ? (
+            <InactiveNotice expired={false} />
           ) : null}
+
+          {activityDeadline && daysLeft !== null ? (
+            <Card style={styles.deadlineCard}>
+              <View style={[styles.deadlineIcon, { backgroundColor: colors.accent }]}>
+                <Feather name="calendar" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.deadlineCopy}>
+                <Text style={[styles.deadlineTitle, { color: colors.foreground }]}>
+                  {t('home.stayActive')}
+                </Text>
+                <Text style={[styles.deadlineBody, { color: colors.mutedForeground }]}>
+                  {t('home.activityDeadline', { date: formatDate(activityDeadline), days: daysLeft })}
+                </Text>
+              </View>
+            </Card>
+          ) : null}
+
+          <Card style={styles.transactionsCard}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              {t('home.lastTransactions')}
+            </Text>
+            {recentActivity.length > 0 ? (
+              recentActivity.map((item: any, index: number) => (
+                <View key={index} style={[styles.transactionItem, index < recentActivity.length - 1 && { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.transactionType, { color: colors.foreground }]}>
+                    {item.type === 'purchase' ? '+' : '-'}{item.points} points
+                  </Text>
+                  <Text style={[styles.transactionAmount, { color: colors.foreground }]}>
+                    {item.amount_tzs ? formatTzs(item.amount_tzs) : item.value_tzs ? formatTzs(item.value_tzs) : '—'}
+                  </Text>
+                  <Text style={[styles.transactionStatus, { color: colors.mutedForeground }]}>
+                    {item.status}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                {t('home.noRecentActivity')}
+              </Text>
+            )}
+            <Text style={[styles.officeNote, { color: colors.mutedForeground }]}>
+              {t('home.officeNote')}
+            </Text>
+          </Card>
+
           <View style={styles.actionStack}>
             <PrimaryButton
-              label="Redeem points"
+              label={t('home.redeem')}
               onPress={() => router.push("/redeem")}
-              disabled={
-                !data.redemptionEligible ||
-                data.customer.status !== "active" ||
-                data.redeemablePoints <= 0
-              }
+              disabled={status !== "active" || redeemablePoints <= 0}
               testID="home-redeem"
             />
             <TextButton
-              label="View purchase transactions"
+              label={t('home.viewTransactions')}
               onPress={() => router.push("/transactions")}
               testID="home-transactions"
             />
@@ -434,15 +424,28 @@ export function HomeScreen() {
 
 export function PointsScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { data: me } = useMe();
-  const query = useGetCustomerDashboard(me);
-  const data = query.data;
+  const query = useCustomerPointsSummary();
+  const summary = query.data ?? fallbackSummary(me || undefined);
+  const tier = summary.tier || "Bronze";
+  const pointValueTzs = summary.point_value_tzs || 100;
+  const totalPoints = Number(summary.total_points) || 0;
+  const redeemablePoints = Number(summary.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
+  const waitingPoints = Number(summary.waiting_points) || 0;
+  const waitingValueTzs = Number(summary.waiting_value_tzs) || 0;
+  const requestedPoints = Number(summary.requested_points) || 0;
+  const redeemedPoints = Number(summary.redeemed_points) || 0;
+  const expiredPoints = Number(summary.expired_points) || 0;
+  const nextUnlockAt = summary.next_unlock_at;
+  const status = summary.status || me?.customer?.status || "active";
+
   return (
     <Page withTabs>
       <PageHeading
-        eyebrow="Points"
-        title="Your balance"
-        description="See which points are ready and which are still pending."
+        eyebrow={t('points.title')}
+        title={t('points.subtitle')}
       />
       {query.isPending ? <LoadingState /> : null}
       {query.isError ? (
@@ -451,125 +454,188 @@ export function PointsScreen() {
           onRetry={() => void query.refetch()}
         />
       ) : null}
-      {data ? (
+      {!query.isPending && !query.isError ? (
         <>
-          {data.customer.status === "inactive" ? (
-            <InactiveNotice expired={data.customer.unusedPointsExpired} />
+          {status === "inactive" ? (
+            <InactiveNotice expired={(Number(summary.expired_points) || 0) > 0} />
           ) : null}
-          <PointsHero
-            total={data.totalPoints}
-            redeemable={data.redeemablePoints}
-            pending={data.pendingPoints}
-          />
+          <Card style={styles.tierInfoCard}>
+            <View style={[styles.tierInfoIcon, { backgroundColor: colors.accent }]}>
+              <Feather name="award" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.tierInfoContent}>
+              <Text style={[styles.tierInfoTitle, { color: colors.foreground }]}>
+                {t('home.tier')}: {tier}
+              </Text>
+              <Text style={[styles.tierInfoText, { color: colors.mutedForeground }]}>
+                {t('home.pointValue', { value: pointValueTzs })}
+              </Text>
+            </View>
+          </Card>
           <Card style={styles.pointDetailCard}>
             <LabelValue
-              label="Available to redeem"
-              value={`${formatPoints(data.redeemablePoints)} points`}
+              label={t('points.totalPoints')}
+              value={`${formatPoints(totalPoints)} points`}
+              icon="award"
+            />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+            <LabelValue
+              label={t('points.redeemable')}
+              value={`${formatPoints(redeemablePoints)} points`}
+              subvalue={`≈ TZS ${formatTzs(redeemableValueTzs)}`}
               icon="check-circle"
             />
             <View style={[styles.separator, { backgroundColor: colors.border }]} />
             <LabelValue
-              label="Pending"
-              value={`${formatPoints(data.pendingPoints)} points`}
+              label={t('points.waiting')}
+              value={`${formatPoints(waitingPoints)} points`}
+              subvalue={`≈ TZS ${formatTzs(waitingValueTzs)}`}
               icon="clock"
             />
-            <Text style={[styles.pointNote, { color: colors.mutedForeground }]}>
-              Pending points become available after 90 days, according to the
-              program rules.
-            </Text>
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
             <LabelValue
-              label="Next points available"
-              value={formatDate(data.nextPointsAvailableAt)}
-              icon="calendar"
+              label={t('points.requested')}
+              value={`${formatPoints(requestedPoints)} points`}
+              icon="send"
             />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+            <LabelValue
+              label={t('points.redeemed')}
+              value={`${formatPoints(redeemedPoints)} points`}
+              icon="repeat"
+            />
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+            <LabelValue
+              label={t('points.expired')}
+              value={`${formatPoints(expiredPoints)} points`}
+              icon="alert-circle"
+            />
+            {nextUnlockAt ? (
+              <>
+                <View style={[styles.separator, { backgroundColor: colors.border }]} />
+                <LabelValue
+                  label={t('points.nextUnlock')}
+                  value={formatDate(nextUnlockAt)}
+                  icon="calendar"
+                />
+              </>
+            ) : null}
           </Card>
-          {data.redemptionEligible ? null : data.redemptionBlockedReason ? (
-            <InlineNotice message={data.redemptionBlockedReason} />
-          ) : null}
           <PrimaryButton
-            label="Redeem points"
+            label={t('points.redeemButton')}
             onPress={() => router.push("/redeem")}
-            disabled={
-              !data.redemptionEligible ||
-              data.customer.status !== "active" ||
-              data.redeemablePoints <= 0
-            }
+            disabled={status !== "active" || redeemablePoints <= 0}
           />
           <TextButton
-            label="View purchase transactions"
+            label={t('points.viewHistory')}
             onPress={() => router.push("/transactions")}
           />
         </>
       ) : null}
     </Page>
   );
-
 }
 
 export function TransactionsScreen() {
-  const query = useListCustomerTransactions();
+  const colors = useColors();
+  const { t } = useTranslation();
+  const query = useRecentActivity();
+  const recentActivity = query.data || [];
+
   return (
     <Page>
       <PageHeading
-        eyebrow="Transactions"
-        title="Your purchases"
-        description="Purchases and points earned on your Alibhai account."
+        eyebrow={t('transactions.title')}
+        title={t('transactions.subtitle')}
       />
-      {query.isPending ? <LoadingState label="Loading transactions" /> : null}
+      {query.isPending ? <LoadingState label={t('common.loading')} /> : null}
       {query.isError ? (
         <ErrorState
           message={apiErrorMessage(query.error)}
           onRetry={() => void query.refetch()}
         />
       ) : null}
-      {query.data?.items.length === 0 ? (
+      {recentActivity.length === 0 ? (
         <EmptyState
-          icon="shopping-bag"
-          title="No transactions yet"
-          description="Your Alibhai purchases and earned points will appear here."
+          icon="activity"
+          title={t('transactions.empty')}
+          description={t('transactions.officeNote')}
         />
       ) : null}
-      {query.data?.items.map((item: any) => (
-        <RecordCard
-          key={item.id}
-          title="Purchase"
-          subtitle={formatDate(item.occurredAt)}
-          amount={formatTzs(item.purchaseAmount)}
-          detail={`+${formatPoints(item.pointsEarned)} points`}
-          reference={item.reference}
-        />
-      ))}
+      {recentActivity.length > 0 ? (
+        <Card style={styles.transactionsCard}>
+          {recentActivity.map((item: any, index: number) => (
+            <View
+              key={index}
+              style={[
+                styles.transactionItem,
+                index < recentActivity.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+              ]}
+            >
+              <View style={styles.transactionTypeColumn}>
+                <Text style={[styles.transactionType, { color: colors.foreground }]}>
+                  {item.type === 'purchase' ? t('transactions.purchase') : t('transactions.redemption')}
+                </Text>
+                <Text style={[styles.transactionReference, { color: colors.mutedForeground }]}>
+                  Ref. {item.reference || '—'}
+                </Text>
+              </View>
+              <View style={styles.transactionAmountColumn}>
+                <Text style={[styles.transactionAmount, { color: colors.foreground }]}>
+                  {item.type === 'purchase' ? '+' : '-'}{formatPoints(item.points || 0)} pts
+                </Text>
+                <Text style={[styles.transactionTzs, { color: colors.mutedForeground }]}>
+                  {item.amount_tzs ? formatTzs(item.amount_tzs) : item.value_tzs ? formatTzs(item.value_tzs) : '—'}
+                </Text>
+              </View>
+              <Text style={[styles.transactionStatus, { color: colors.mutedForeground }]}>
+                {item.status || '—'}
+              </Text>
+            </View>
+          ))}
+          <Text style={[styles.officeNote, { color: colors.mutedForeground }]}>
+            {t('transactions.officeNote')}
+          </Text>
+        </Card>
+      ) : null}
     </Page>
   );
 }
 
 export function RedemptionHistoryScreen() {
-  const query = useListCustomerRedemptions();
+  const { t } = useTranslation();
+  const query = useMyRedemptions();
+  const items = query.data?.redemptions?.map((r: any) => ({
+    id: r.id,
+    reference: r.redemption_reference,
+    pointsRedeemed: r.points_redeemed,
+    status: r.status,
+    occurredAt: r.redeemed_at,
+  })) || [];
   return (
     <Page withTabs>
       <PageHeading
-        eyebrow="History"
-        title="Redemptions"
-        description="A record of points you’ve used."
+        eyebrow={t('tabs.history')}
+        title={t('admin.redemptions.title')}
       />
-      {query.isPending ? <LoadingState label="Loading redemption history" /> : null}
+      {query.isPending ? <LoadingState label={t('common.loading')} /> : null}
       {query.isError ? (
         <ErrorState
           message={apiErrorMessage(query.error)}
           onRetry={() => void query.refetch()}
         />
       ) : null}
-      {query.data?.items.length === 0 ? (
+      {items.length === 0 ? (
         <EmptyState
           icon="repeat"
-          title="No redemptions yet"
-          description="When you redeem points, the reference and details will appear here."
+          title={t('admin.redemptions.empty')}
+          description=""
         />
       ) : null}
-      {query.data?.items.map((item: any) => (
+      {items.map((item: any) => (
         <RecordCard
           key={item.id}
-          title="Points redeemed"
+          title={t('home.redemption')}
           subtitle={formatDate(item.occurredAt)}
           amount={`−${formatPoints(item.pointsRedeemed)}`}
           detail={`${formatPoints(item.pointsRedeemed)} points`}
@@ -583,24 +649,26 @@ export function RedemptionHistoryScreen() {
 
 export function ProfileScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { data: me, isPending } = useMe();
   const summaryQuery = useCustomerPointsSummary();
   const { signOut } = useAuth();
-  const summary = summaryQuery.data ?? fallbackSummary(me);
+  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
   const fullName = me?.profile?.full_name || "Customer";
   const phoneNumber = me?.profile?.phone || "—";
   const customerId = summary.customer_code || me?.customer?.customer_code || "—";
+  const city = me?.customer?.city || "—";
   const status = summary.status || me?.customer?.status || "active";
   const unusedPointsExpired = (Number(summary.expired_points) || 0) > 0;
 
   return (
     <Page withTabs>
       <PageHeading
-        eyebrow="Profile"
-        title="Your account"
-        description="Your Alibhai Points customer details."
+        eyebrow={t('profile.title')}
+        title={t('profile.personalInfo')}
+        description={t('profile.accountInfo')}
       />
-      {isPending && !me ? <LoadingState label="Loading your profile" /> : null}
+      {isPending && !me ? <LoadingState label={t('common.loading')} /> : null}
       <Card style={styles.profileCard}>
         <View style={[styles.profileAvatar, { backgroundColor: colors.accent }]}>
           <Feather name="user" size={25} color={colors.primary} />
@@ -611,24 +679,28 @@ export function ProfileScreen() {
         <StatusPill active={status === "active"} />
       </Card>
       <Card style={styles.profileDetails}>
-        <LabelValue label="Phone number" value={phoneNumber} icon="phone" />
+        <LabelValue label={t('profile.phone')} value={phoneNumber} icon="phone" />
         <View style={[styles.separator, { backgroundColor: colors.border }]} />
-        <LabelValue label="Customer ID" value={customerId} icon="hash" />
+        <LabelValue label={t('profile.city')} value={city} icon="map-pin" />
+        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+        <LabelValue label={t('profile.customerId')} value={customerId} icon="hash" />
         <View style={[styles.separator, { backgroundColor: colors.border }]} />
         <LabelValue
-          label="Account status"
-          value={status === "active" ? "Active" : "Inactive"}
+          label={t('profile.status')}
+          value={status === "active" ? t('home.statusActive') : t('home.statusInactive')}
           icon="shield"
         />
       </Card>
+      <LanguageToggle />
       {status === "inactive" ? (
         <InactiveNotice expired={unusedPointsExpired} />
       ) : null}
       <PrimaryButton
-        label="Sign out"
+        label={t('profile.logout')}
         onPress={() => void signOut().then(() => router.replace("/(auth)/welcome"))}
         secondary
         testID="profile-sign-out"
+        style={{ marginBottom: 20 }}
       />
     </Page>
   );
@@ -641,8 +713,10 @@ type RedemptionValues = z.infer<typeof redemptionSchema>;
 
 export function RedeemScreen() {
   const colors = useColors();
+  const { t } = useTranslation();
   const { data: me } = useMe();
-  const dashboard = useGetCustomerDashboard(me);
+  const summaryQuery = useCustomerPointsSummary();
+  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
   const redeem = useCreateRedemption();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -650,22 +724,23 @@ export function RedeemScreen() {
   const [redemptionResult, setRedemptionResult] =
     useState<CustomerRedemption | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const { control, handleSubmit, setError, formState, reset } =
+  const { control, handleSubmit, setError, formState, reset, watch } =
     useForm<RedemptionValues>({
       resolver: zodResolver(redemptionSchema),
       defaultValues: { points: "" },
     });
 
+  const pointsValue = watch("points");
+  const pointValueTzs = summary.point_value_tzs || 100;
+  const redeemablePoints = Number(summary.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
+  const status = summary.status || me?.customer?.status || "active";
+
   const openConfirmation = handleSubmit(({ points }) => {
     const amount = Number(points);
-    const available = dashboard.data?.redeemablePoints;
-    if (available === undefined) {
-      setFormError("Your available balance could not be confirmed. Try again.");
-      return;
-    }
-    if (amount > available) {
+    if (amount > redeemablePoints) {
       setError("points", {
-        message: "Enter an amount no higher than your redeemable balance.",
+        message: t('redeem.insufficientPoints'),
       });
       return;
     }
@@ -678,9 +753,7 @@ export function RedeemScreen() {
     if (requestedPoints === null) return;
     setFormError(null);
     try {
-      const result = await redeem.mutateAsync({
-        data: { points: requestedPoints },
-      });
+      const result = await redeem.mutateAsync(requestedPoints);
       setRedemptionResult(result);
       setConfirmOpen(false);
       reset({ points: "" });
@@ -698,56 +771,47 @@ export function RedeemScreen() {
     }
   };
 
-  const eligible =
-    dashboard.data?.redemptionEligible === true &&
-    dashboard.data.customer.status === "active" &&
-    dashboard.data.redeemablePoints > 0;
+  const eligible = status === "active" && redeemablePoints > 0;
 
   return (
     <Page>
       <PageHeading
-        eyebrow="Redeem"
-        title="Use your points"
-        description="Choose how many available points you want to redeem."
+        eyebrow={t('redeem.title')}
+        title={t('redeem.subtitle')}
       />
-      {dashboard.isPending ? <LoadingState label="Checking your balance" /> : null}
-      {dashboard.isError ? (
+      {summaryQuery.isPending ? <LoadingState label={t('common.loading')} /> : null}
+      {summaryQuery.isError ? (
         <ErrorState
-          message={apiErrorMessage(dashboard.error)}
-          onRetry={() => void dashboard.refetch()}
+          message={apiErrorMessage(summaryQuery.error)}
+          onRetry={() => void summaryQuery.refetch()}
         />
       ) : null}
-      {dashboard.data ? (
+      {!summaryQuery.isPending && !summaryQuery.isError ? (
         <>
-          {dashboard.data.customer.status === "inactive" ? (
-            <InactiveNotice
-              expired={dashboard.data.customer.unusedPointsExpired}
-            />
+          {status === "inactive" ? (
+            <InactiveNotice expired={(Number(summary.expired_points) || 0) > 0} />
           ) : null}
           <Card style={styles.availableCard}>
             <Text style={[styles.availableLabel, { color: colors.mutedForeground }]}>
-              Redeemable balance
+              {t('redeem.availableBalance')}
             </Text>
             <Text style={[styles.availableValue, { color: colors.foreground }]}>
-              {formatPoints(dashboard.data.redeemablePoints)}
+              {formatPoints(redeemablePoints)}
             </Text>
             <Text style={[styles.availableUnit, { color: colors.mutedForeground }]}>
-              points available
+              points ≈ TZS {formatTzs(redeemableValueTzs)}
             </Text>
           </Card>
-          {dashboard.data.redemptionEligible ? null : (
+          {!eligible ? (
             <InlineNotice
               tone="warning"
-              message={
-                dashboard.data.redemptionBlockedReason ||
-                "Redemption is not currently available for this account."
-              }
+              message={status === "inactive" ? t('redeem.inactive') : t('redeem.insufficientPoints')}
             />
-          )}
+          ) : null}
           {redemptionResult ? (
             <InlineNotice
               tone="success"
-              message={`Redemption submitted. Reference: ${redemptionResult.reference}`}
+              message={t('redeem.successMessage', { points: redemptionResult.points, value: formatTzs(redemptionResult.value_tzs || 0), reference: redemptionResult.reference })}
             />
           ) : null}
           {formError ? <InlineNotice message={formError} tone="warning" /> : null}
@@ -756,19 +820,24 @@ export function RedeemScreen() {
             name="points"
             render={({ field }) => (
               <TextField
-                label="Points to redeem"
+                label={t('redeem.pointsToRedeem')}
                 value={field.value}
                 onChangeText={field.onChange}
                 onBlur={field.onBlur}
                 keyboardType="number-pad"
-                placeholder="Enter points"
+                placeholder={t('redeem.enterPoints')}
                 error={formState.errors.points?.message}
                 testID="redeem-points-input"
               />
             )}
           />
+          {pointsValue && /^\d+$/.test(pointsValue) ? (
+            <Text style={[styles.serverCheckNote, { color: colors.mutedForeground }]}>
+              {t('redeem.approximateValue', { value: formatTzs(Number(pointsValue) * pointValueTzs) })}
+            </Text>
+          ) : null}
           <PrimaryButton
-            label="Review redemption"
+            label={t('redeem.confirm')}
             onPress={() => void openConfirmation()}
             disabled={!eligible}
             testID="redeem-review"
@@ -795,14 +864,13 @@ export function RedeemScreen() {
               <Feather name="repeat" size={22} color={colors.primary} />
             </View>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-              Confirm redemption
+              {t('redeem.confirmTitle', { points: requestedPoints === null ? '' : formatPoints(requestedPoints) })}
             </Text>
             <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
-              Redeem {requestedPoints === null ? "" : formatPoints(requestedPoints)}{" "}
-              points? Alibhai will confirm eligibility and return a reference.
+              {t('redeem.confirmMessage', { points: requestedPoints === null ? '' : formatPoints(requestedPoints), value: requestedPoints ? formatTzs(requestedPoints * pointValueTzs) : '0' })}
             </Text>
             <PrimaryButton
-              label={redeem.isPending ? "Submitting…" : "Confirm"}
+              label={redeem.isPending ? t('common.loading') : t('common.confirm')}
               onPress={() => void confirmRedemption()}
               disabled={redeem.isPending}
               loading={redeem.isPending}
@@ -818,7 +886,7 @@ export function RedeemScreen() {
               ]}
             >
               <Text style={[styles.modalCancelText, { color: colors.primary }]}>
-                Cancel
+                {t('common.cancel')}
               </Text>
             </Pressable>
           </View>
@@ -833,6 +901,10 @@ const styles = StyleSheet.create({
   greetingText: { flex: 1, gap: 3 },
   greeting: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
   customerId: { fontSize: 12 },
+  customerIdRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tierBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  tierBadgeText: { fontSize: 11, fontWeight: "700" },
+  pointValueText: { fontSize: 11 },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -844,16 +916,41 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusLabel: { fontSize: 12, fontWeight: "700" },
-  pointsHero: { borderRadius: 23, padding: 22, gap: 10 },
-  heroTopline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  heroLabel: { fontSize: 13, fontWeight: "600" },
-  heroTotal: { fontSize: 38, lineHeight: 46, fontWeight: "700", letterSpacing: -0.7 },
-  heroDivider: { height: 1, marginVertical: 2 },
-  heroStats: { flexDirection: "row", alignItems: "center", gap: 18 },
-  heroStat: { flex: 1, gap: 5 },
-  heroStatValue: { fontSize: 18, fontWeight: "700" },
-  heroStatLabel: { fontSize: 12 },
-  heroStatSeparator: { width: 1, height: 32 },
+  pendingBanner: { flexDirection: "row", alignItems: "center", gap: 13, padding: 14 },
+  pendingIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  pendingContent: { flex: 1, gap: 3 },
+  pendingTitle: { fontSize: 14, fontWeight: "700" },
+  pendingDetail: { fontSize: 13 },
+  pendingRef: { fontSize: 12 },
+  pointsCard: { padding: 16 },
+  pointsRow: { flexDirection: "row", alignItems: "center" },
+  pointsColumn: { flex: 1, gap: 3 },
+  pointsLabel: { fontSize: 13, fontWeight: "600" },
+  pointsValue: { fontSize: 22, fontWeight: "700" },
+  pointsTzs: { fontSize: 12 },
+  pointsDivider: { width: 1, height: 40, marginHorizontal: 16 },
+  pointsValueSmall: { fontSize: 18, fontWeight: "700" },
+  pointsTzsSmall: { fontSize: 11 },
+  tierProgressCard: { padding: 16, gap: 8 },
+  tierProgressTitle: { fontSize: 14, fontWeight: "700" },
+  tierProgressSubtitle: { fontSize: 12, lineHeight: 18 },
+  transactionsCard: { padding: 16, gap: 12 },
+  cardTitle: { fontSize: 15, fontWeight: "700" },
+  transactionItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1 },
+  transactionTypeColumn: { flex: 1, gap: 2 },
+  transactionType: { fontSize: 14, fontWeight: "600" },
+  transactionReference: { fontSize: 11 },
+  transactionAmountColumn: { alignItems: "flex-end", gap: 2 },
+  transactionAmount: { fontSize: 14, fontWeight: "700" },
+  transactionTzs: { fontSize: 12 },
+  transactionStatus: { fontSize: 12 },
+  emptyText: { fontSize: 13, textAlign: "center", paddingVertical: 20 },
+  officeNote: { fontSize: 11, textAlign: "center", marginTop: 8 },
+  tierInfoCard: { flexDirection: "row", alignItems: "center", gap: 13, padding: 14 },
+  tierInfoIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  tierInfoContent: { flex: 1, gap: 4 },
+  tierInfoTitle: { fontSize: 14, fontWeight: "700" },
+  tierInfoText: { fontSize: 12, lineHeight: 18 },
   deadlineCard: { flexDirection: "row", alignItems: "center", gap: 13 },
   deadlineIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   deadlineCopy: { flex: 1, gap: 4 },

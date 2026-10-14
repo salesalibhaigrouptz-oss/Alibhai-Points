@@ -23,6 +23,10 @@ export const DB_ERROR_MAP: Record<string, { status: number; message: string }> =
     status: 400,
     message: "Invalid phone number format. Please provide a valid Tanzanian phone number.",
   },
+  INVALID_CITY: {
+    status: 400,
+    message: "City must be at least 2 characters long.",
+  },
   INVALID_AMOUNT: {
     status: 400,
     message: "Purchase amount must be greater than zero.",
@@ -30,6 +34,22 @@ export const DB_ERROR_MAP: Record<string, { status: number; message: string }> =
   INVALID_POINTS: {
     status: 400,
     message: "Points must be greater than zero.",
+  },
+  INVALID_VALUE: {
+    status: 400,
+    message: "Invalid value provided.",
+  },
+  INVALID_THRESHOLD: {
+    status: 400,
+    message: "Invalid threshold value.",
+  },
+  THRESHOLDS_MUST_INCREASE: {
+    status: 400,
+    message: "Threshold values must increase across tiers.",
+  },
+  FIRST_TIER_MUST_START_AT_ZERO: {
+    status: 400,
+    message: "The first tier must start at zero.",
   },
   REASON_REQUIRED: {
     status: 400,
@@ -69,6 +89,10 @@ export const DB_ERROR_MAP: Record<string, { status: number; message: string }> =
     status: 403,
     message: "Access denied. Administrator privileges required.",
   },
+  NOT_A_CUSTOMER: {
+    status: 403,
+    message: "Access denied. This operation is only available to customers.",
+  },
   CUSTOMER_DISABLED: {
     status: 403,
     message: "Customer profile is deactivated.",
@@ -98,6 +122,10 @@ export const DB_ERROR_MAP: Record<string, { status: number; message: string }> =
   CUSTOMER_NOT_FOUND: {
     status: 404,
     message: "Customer not found.",
+  },
+  TIER_NOT_FOUND: {
+    status: 404,
+    message: "Loyalty tier not found.",
   },
   REDEMPTION_NOT_FOUND: {
     status: 404,

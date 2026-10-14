@@ -9,12 +9,14 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/services/auth-context";
 import { toE164 } from "@/utils/phone";
 import { apiLogin } from "@/services/api";
 
 export default function AdminLogin() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { signIn, signOut } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +27,7 @@ export default function AdminLogin() {
     const trimmedPass = password.trim();
 
     if (!trimmedUser || !trimmedPass) {
-      Alert.alert("Hitilafu / Error", "Tafadhali weka namba/barua pepe na nenosiri / Please enter username/phone and password/PIN");
+      Alert.alert(t("common.error"), t("auth.loginError"));
       return;
     }
 
@@ -35,8 +37,8 @@ export default function AdminLogin() {
       const normalized = toE164(trimmedUser);
       if (!normalized) {
         Alert.alert(
-          "Hitilafu / Error",
-          "Namba ya simu si sahihi / Invalid phone number"
+          t("common.error"),
+          t("auth.invalidPhone")
         );
         setLoading(false);
         return;
@@ -47,8 +49,8 @@ export default function AdminLogin() {
       if (res.role !== "admin") {
         await signOut();
         Alert.alert(
-          "Ufikiaji Umekataliwa / Access Denied",
-          "Akaunti hii haina ruhusa ya Admin / This account does not have admin permissions."
+          t("common.error"),
+          t("auth.accessDenied")
         );
         setLoading(false);
         return;
@@ -59,8 +61,8 @@ export default function AdminLogin() {
     } catch (err: any) {
       const msg =
         err?.response?.data?.error?.message ||
-        "Namba au PIN si sahihi / Invalid credentials";
-      Alert.alert("Hitilafu / Error", msg);
+        t("auth.loginError");
+      Alert.alert(t("common.error"), msg);
     } finally {
       setLoading(false);
     }
@@ -69,11 +71,11 @@ export default function AdminLogin() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.subtitle}>Alibhai Points Dashboard</Text>
+        <Text style={styles.subtitle}>{t("admin.dashboard.title")}</Text>
 
         <TextInput
           style={styles.input}
-          placeholder="Namba ya simu au Barua pepe / Phone or Email"
+          placeholder={t("auth.phoneOrEmail")}
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
@@ -83,7 +85,7 @@ export default function AdminLogin() {
 
         <TextInput
           style={styles.input}
-          placeholder="PIN au Nenosiri / PIN or Password"
+          placeholder={t("auth.pinOrPassword")}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -100,7 +102,7 @@ export default function AdminLogin() {
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Login</Text>
+            <Text style={styles.buttonText}>{t("auth.login")}</Text>
           )}
         </TouchableOpacity>
 
@@ -109,7 +111,7 @@ export default function AdminLogin() {
           onPress={() => router.back()}
           disabled={loading}
         >
-          <Text style={styles.backButtonText}>Rudi / Back</Text>
+          <Text style={styles.backButtonText}>{t("common.back")}</Text>
         </TouchableOpacity>
       </View>
     </View>

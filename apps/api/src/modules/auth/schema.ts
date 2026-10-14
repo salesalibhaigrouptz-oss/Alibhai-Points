@@ -7,6 +7,11 @@ export const completeRegistrationSchema = z.object({
     .min(2, { message: "Full name must be at least 2 characters long" })
     .max(100, { message: "Full name must be less than 100 characters" })
     .regex(/^[a-zA-Z\s'-]+$/, { message: "Full name can only contain letters, spaces, hyphens, and apostrophes" }),
+  city: z
+    .string({ required_error: "City is required" })
+    .trim()
+    .min(2, { message: "City must be at least 2 characters long" })
+    .max(60, { message: "City must be less than 60 characters" }),
 }).strict();
 
 export type CompleteRegistrationInput = z.infer<typeof completeRegistrationSchema>;
@@ -36,6 +41,12 @@ export const signupSchema = z.object({
     .min(2, { message: "Full name must be at least 2 characters long" })
     .max(100)
     .optional(),
+  city: z
+    .string()
+    .trim()
+    .min(2, { message: "City must be at least 2 characters long" })
+    .max(60)
+    .optional(),
   phone: z.string({ required_error: "Phone number is required" }).trim(),
   pin: z
     .string({ required_error: "PIN is required" })
@@ -44,4 +55,3 @@ export const signupSchema = z.object({
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;
-

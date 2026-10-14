@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { usePointRules, useUpdatePointRules } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
 
 export default function PointRules() {
+  const { t } = useTranslation();
   const [tzsPerPoint, setTzsPerPoint] = useState('1000');
   const [redemptionWaitDays, setRedemptionWaitDays] = useState('90');
   const [activityPeriodDays, setActivityPeriodDays] = useState('25');
@@ -21,12 +23,12 @@ export default function PointRules() {
 
   const handleSave = async () => {
     Alert.alert(
-      'Confirm Changes',
+      t('admin.tiers.confirmTitle'),
       'This will change point rules for future transactions only. Current transactions will not be affected.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Save',
+          text: t('common.save'),
           onPress: async () => {
             try {
               await updateMutation.mutateAsync({
@@ -34,11 +36,11 @@ export default function PointRules() {
                 redemptionWaitDays: parseInt(redemptionWaitDays, 10),
                 activityPeriodDays: parseInt(activityPeriodDays, 10),
               });
-              Alert.alert('Success', 'Point rules updated successfully');
+              Alert.alert(t('common.done'), 'Point rules updated successfully');
               setEditing(false);
               await refetch();
             } catch (error) {
-              Alert.alert('Error', apiErrorMessage(error));
+              Alert.alert(t('common.error'), apiErrorMessage(error));
             }
           },
         },
@@ -76,7 +78,7 @@ export default function PointRules() {
       <View style={[styles.container, styles.loadingContainer]}>
         <Text style={styles.errorText}>Failed to load point rules. Tap to retry.</Text>
         <TouchableOpacity onPress={() => refetch()}>
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{t('common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -87,13 +89,13 @@ export default function PointRules() {
       <RefreshControl refreshing={isLoading} onRefresh={refetch} />
     }>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Point Rules</Text>
-        <Text style={styles.headerSubtitle}>Configure loyalty point calculations</Text>
+        <Text style={styles.headerTitle}>{t('admin.pointRules.title')}</Text>
+        <Text style={styles.headerSubtitle}>{t('admin.pointRules.subtitle')}</Text>
       </View>
 
       <View style={styles.content}>
         <RuleCard
-          title="TZS per Point"
+          title={t('admin.pointRules.amountPerPoint')}
           value={tzsPerPoint}
           description="Amount in Tanzanian Shillings required to earn 1 point"
           editable
@@ -101,7 +103,7 @@ export default function PointRules() {
         />
 
         <RuleCard
-          title="Redemption Wait Period"
+          title={t('admin.pointRules.waitDays')}
           value={`${redemptionWaitDays} days`}
           description="Time before points become redeemable after purchase"
           editable
@@ -109,7 +111,7 @@ export default function PointRules() {
         />
 
         <RuleCard
-          title="Activity Period"
+          title={t('admin.pointRules.inactivityDays')}
           value={`${activityPeriodDays} days`}
           description="Time before customer status becomes inactive without activity"
           editable
@@ -134,7 +136,7 @@ export default function PointRules() {
           onPress={() => setEditing(!editing)}
         >
           <Text style={styles.actionButtonText}>
-            {editing ? 'Cancel' : 'Edit Rules'}
+            {editing ? t('common.cancel') : t('admin.tiers.edit')}
           </Text>
         </TouchableOpacity>
 
@@ -145,7 +147,7 @@ export default function PointRules() {
             disabled={updateMutation.isPending}
           >
             <Text style={styles.saveButtonText}>
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {updateMutation.isPending ? t('common.loading') : t('admin.tiers.save')}
             </Text>
           </TouchableOpacity>
         )}

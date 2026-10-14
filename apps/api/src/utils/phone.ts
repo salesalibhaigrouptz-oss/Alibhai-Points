@@ -57,37 +57,13 @@ export function isValidTanzanianPhone(phone: string): boolean {
 /**
  * getVerifiedPhone — derives the verified E.164 phone number from a Supabase Auth user.
  *
- * TEMPORARY (phone + PIN flow):
- *   Supabase emails are fake: 255712345678@<AUTH_EMAIL_DOMAIN>
- *   The local-part IS the phone in 255XXXXXXXXX format; we prefix '+' to get E.164.
+ * Phone-based flow only: User has a phone field directly; normalize it to E.164.
  *
- * TO SWITCH BACK to real OTP later:
- *   Replace the body with: return toE164(user.phone ?? "");
- *
- * Throws AppError(400, 'INVALID_EMAIL_FORMAT') when the user's email does not
- * match the expected fake-email pattern.
+ * Throws AppError(400, 'INVALID_PHONE') when the user's phone is invalid.
  */
 export function getVerifiedPhone(user: User): string {
-  const email = user.email ?? "";
-  const expectedSuffix = `@${env.AUTH_EMAIL_DOMAIN}`;
-
-  if (!email.endsWith(expectedSuffix)) {
-    throw new AppError(
-      400,
-      "INVALID_EMAIL_FORMAT",
-      `User email does not match the expected phone-derived format (*@${env.AUTH_EMAIL_DOMAIN})`
-    );
+  if (!user.phone) {
+    throw new AppError(400, "INVALID_PHONE", "User phone is required");
   }
-
-  // Local-part must be exactly 255 followed by 9 digits (e.g. 255712345678)
-  const localPart = email.slice(0, -expectedSuffix.length);
-  if (!/^255\d{9}$/.test(localPart)) {
-    throw new AppError(
-      400,
-      "INVALID_EMAIL_FORMAT",
-      "Email local-part does not encode a valid Tanzanian phone number (expected 255XXXXXXXXX)"
-    );
-  }
-
-  return `+${localPart}`; // +255XXXXXXXXX
+  return toE164(user.phone);
 }

@@ -88,6 +88,7 @@ export class AuthService {
         id: profile.id,
         role: profile.role,
         phone: profile.phone,
+        email: null, // For fake-email flow tests, this should be the phone-derived email
       },
       env.JWT_SECRET,
       { expiresIn: "30d" }
@@ -108,16 +109,26 @@ export class AuthService {
   async signup(
     fullName: string,
     phone: string,
-    pin: string
+    pin: string,
+    city: string
   ): Promise<AuthSessionResponse> {
     const normalizedPhone = toE164(phone);
     const cleanName = fullName.trim();
+    const cleanCity = city.trim();
 
     if (cleanName.length < 2) {
       throw new AppError(
         400,
         "VALIDATION_ERROR",
         "Weka jina kamili (angalau herufi 2) / Enter full name"
+      );
+    }
+
+    if (cleanCity.length < 2) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "Weka jiji (angalau herufi 2) / Enter city"
       );
     }
 
@@ -176,7 +187,8 @@ export class AuthService {
     const regResult = await this.completeRegistration(
       userId,
       cleanName,
-      normalizedPhone
+      normalizedPhone,
+      cleanCity
     );
 
     // 4. Load created profile and customer record
@@ -198,6 +210,7 @@ export class AuthService {
         id: userId,
         role: "customer",
         phone: normalizedPhone,
+        email: null, // For fake-email flow compatibility
       },
       env.JWT_SECRET,
       { expiresIn: "30d" }
@@ -218,12 +231,14 @@ export class AuthService {
   async completeRegistration(
     userId: string,
     fullName: string,
-    phone: string
+    phone: string,
+    city: string
   ): Promise<CompleteRegistrationResult> {
     const { data, error } = await supabase.rpc("create_customer_profile", {
       p_user_id: userId,
       p_full_name: fullName.trim(),
       p_phone: phone,
+      p_city: city.trim(),
     });
 
     if (error) {

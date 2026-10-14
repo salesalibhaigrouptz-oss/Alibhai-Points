@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 import {
   View,
@@ -8,15 +8,20 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
+  Platform,
   Alert,
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { useTranslation } from "react-i18next";
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { useAuth } from "@/services/auth-context";
-import { apiErrorMessage } from "@/services/api";
+import { apiErrorMessage, formatPoints, formatTzs, getApiBaseUrl, getStoredToken } from "@/services/api";
 import {
   useCustomer,
   useCustomerPurchases,
+  useCustomerStatement,
   useResetCustomerPin,
 } from "@/services/hooks";
 
@@ -29,19 +34,117 @@ const formatDate = (dateString: string | null) => {
 export default function CustomerDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useAuth();
-  
+  const { t } = useTranslation();
+
   const { data: customer, isLoading, error, refetch } = useCustomer(id || '');
   const { data: purchasesData } = useCustomerPurchases(id || '', { limit: 20 });
   const purchases = purchasesData?.purchases || [];
-  
+
   const [activeTab, setActiveTab] = useState<
-    "overview" | "purchases" | "points" | "redemptions"
+    "overview" | "purchases" | "points" | "redemptions" | "statement"
   >("overview");
+
+  // Statement state
+  const [dateRange, setDateRange] = useState<'this_month' | 'last_3_months' | 'all' | 'custom'>('this_month');
+  const [customFromDate, setCustomFromDate] = useState('');
+  const [customToDate, setCustomToDate] = useState('');
+
+  // Calculate date range
+  const getDateRange = () => {
+    const now = new Date();
+    switch (dateRange) {
+      case 'this_month':
+        return {
+          from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0],
+          to: now.toISOString().split('T')[0],
+        };
+      case 'last_3_months':
+        return {
+          from: new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().split('T')[0],
+          to: now.toISOString().split('T')[0],
+        };
+      case 'all':
+        return { from: undefined, to: undefined };
+      case 'custom':
+        return {
+          from: customFromDate || undefined,
+          to: customToDate || undefined,
+        };
+      default:
+        return { from: undefined, to: undefined };
+    }
+  };
+
+  const { from, to } = getDateRange();
+  const { data: statementData, isLoading: loadingStatement } = useCustomerStatement(id || '', from, to, 'json');
+
+  const handleExportCSV = async () => {
+    if (!id) return;
+    try {
+      const { from: csvFrom, to: csvTo } = getDateRange();
+      const baseUrl = getApiBaseUrl();
+      const token = await getStoredToken();
+
+      const params = new URLSearchParams();
+      if (csvFrom && csvFrom !== "undefined" && csvFrom !== "null") params.append("from", csvFrom);
+      if (csvTo && csvTo !== "undefined" && csvTo !== "null") params.append("to", csvTo);
+      params.append("format", "csv");
+
+      const url = `${baseUrl}/api/admin/customers/${encodeURIComponent(id)}/statement?${params.toString()}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let message = 'Failed to export CSV';
+        try {
+          const parsed = JSON.parse(errorText);
+          message = parsed.error?.message || parsed.message || message;
+        } catch {
+          if (errorText) message = errorText;
+        }
+        throw new Error(message);
+      }
+
+      const csvText = await response.text();
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.setAttribute('download', `statement_${id}_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      const baseDir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
+      const fileUri = `${(baseDir || '').replace(/\/+$/, '')}/statement_${id}_${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csvText);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: t('admin.customerDetails.shareCsv'),
+        });
+      } else {
+        Alert.alert(t('common.done'), `CSV generated successfully at ${fileUri}`);
+      }
+    } catch (error) {
+      Alert.alert(t('common.error'), apiErrorMessage(error));
+    }
+  };
 
   // Reset PIN state
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [newPin, setNewPin] = useState("");
-  
+
   const resetMutation = useResetCustomerPin();
 
   if (isLoading) {
@@ -132,19 +235,27 @@ export default function CustomerDetails() {
   const renderOverview = () => (
     <View style={styles.content}>
       <View style={styles.infoCard}>
-        <Text style={styles.infoLabel}>Customer ID</Text>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.customerId')}</Text>
         <Text style={styles.infoValue}>{customer.customer_code}</Text>
       </View>
       <View style={styles.infoCard}>
-        <Text style={styles.infoLabel}>Name</Text>
-        <Text style={styles.infoValue}>{customer.profiles?.full_name || 'Unknown'}</Text>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.name')}</Text>
+        <Text style={styles.infoValue}>{customer.profiles?.full_name || t('common.unknown')}</Text>
       </View>
       <View style={styles.infoCard}>
-        <Text style={styles.infoLabel}>Phone</Text>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.phone')}</Text>
         <Text style={styles.infoValue}>{customer.profiles?.phone || 'N/A'}</Text>
       </View>
       <View style={styles.infoCard}>
-        <Text style={styles.infoLabel}>Status</Text>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.city')}</Text>
+        <Text style={styles.infoValue}>{customer.city || 'N/A'}</Text>
+      </View>
+      <View style={styles.infoCard}>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.tier')}</Text>
+        <Text style={styles.infoValue}>{typeof customer.tier === 'string' ? customer.tier : customer.tier?.name || 'N/A'}</Text>
+      </View>
+      <View style={styles.infoCard}>
+        <Text style={styles.infoLabel}>{t('admin.customerDetails.status')}</Text>
         <View
           style={[
             styles.statusBadge,
@@ -171,42 +282,40 @@ export default function CustomerDetails() {
         <View style={styles.pointsRow}>
           <View style={styles.pointsItem}>
             <Text style={styles.pointsLabel}>Total</Text>
-            <Text style={styles.pointsValue}>{customer.points_balance || 0}</Text>
+            <Text style={styles.pointsValue}>{formatPoints(customer.points_balance || 0)}</Text>
           </View>
           <View style={styles.pointsItem}>
-            <Text style={styles.pointsLabel}>Redeemable</Text>
+            <Text style={styles.pointsLabel}>Value</Text>
             <Text style={[styles.pointsValue, styles.redeemable]}>
-              {customer.points_balance || 0}
-            </Text>
-          </View>
-          <View style={styles.pointsItem}>
-            <Text style={styles.pointsLabel}>Pending</Text>
-            <Text style={[styles.pointsValue, styles.pending]}>
-              0
+              {formatTzs((customer.points_balance || 0) * (customer.point_value_tzs || 0))}
             </Text>
           </View>
         </View>
       </View>
 
       <View style={styles.infoCard}>
+        <Text style={styles.infoLabel}>Lifetime Purchases</Text>
+        <Text style={styles.infoValue}>{formatTzs(customer.lifetime_purchases || 0)}</Text>
+      </View>
+      <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Last Transaction</Text>
         <Text style={styles.infoValue}>{customer.last_transaction_at ? formatDate(customer.last_transaction_at) : 'Never'}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Activity Deadline</Text>
-        <Text style={styles.infoValue}>N/A</Text>
+        <Text style={styles.infoValue}>{customer.activity_deadline ? formatDate(customer.activity_deadline) : 'N/A'}</Text>
       </View>
 
       {/* Admin Actions: Reset PIN button */}
       {role === "admin" && (
         <View style={styles.adminActionCard}>
-          <Text style={styles.adminActionTitle}>Admin Actions</Text>
+          <Text style={styles.adminActionTitle}>{t('admin.customerDetails.adminActions')}</Text>
           <TouchableOpacity
             style={styles.resetPinButton}
             onPress={handleOpenResetModal}
           >
             <Text style={styles.resetPinButtonText}>
-              Reset PIN / Badili PIN ya Mteja
+              {t('admin.customerDetails.resetPin')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -225,84 +334,167 @@ export default function CustomerDetails() {
           <Text style={styles.transactionAmount}>
             TZS {purchase.purchase_amount.toLocaleString()}
           </Text>
-          <Text style={styles.transactionPoints}>+{purchase.points_earned} points</Text>
+          <Text style={styles.transactionPoints}>+{purchase.points_earned} {t('common.pts')}</Text>
         </View>
       ))}
       {purchases.length === 0 && (
-        <Text style={styles.emptyText}>No purchases found</Text>
+        <Text style={styles.emptyText}>{t('admin.customerDetails.noPurchases')}</Text>
       )}
     </View>
   );
 
   const renderRedemptions = () => (
     <View style={styles.content}>
-      {redemptions.map((redemption) => (
-        <View key={redemption.id} style={styles.transactionCard}>
-          <View style={styles.transactionHeader}>
-            <Text style={styles.transactionId}>{redemption.id}</Text>
-            <Text style={styles.transactionDate}>{formatDate(redemption.created_at)}</Text>
-          </View>
-          <Text style={styles.transactionPoints}>
-            -{redemption.points} points
-          </Text>
-          <Text style={styles.transactionReference}>
-            Ref: {redemption.reference}
-          </Text>
-          <View
-            style={[
-              styles.statusBadge,
-              redemption.status === "approved"
-                ? styles.statusActive
-                : redemption.status === "pending"
-                  ? styles.statusPending
-                  : styles.statusInactive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                redemption.status === "approved"
-                  ? styles.statusTextActive
-                  : redemption.status === "pending"
-                    ? styles.statusTextPending
-                    : styles.statusTextInactive,
-              ]}
-            >
-              {redemption.status}
-            </Text>
-          </View>
-        </View>
-      ))}
-      {redemptions.length === 0 && (
-        <Text style={styles.emptyText}>No redemptions found</Text>
-      )}
+      <Text style={styles.emptyText}>{t('admin.customerDetails.noRedemptions')}</Text>
     </View>
   );
 
   const renderPoints = () => (
     <View style={styles.content}>
       <View style={styles.pointsCard}>
-        <Text style={styles.pointsTitle}>Points Breakdown</Text>
+        <Text style={styles.pointsTitle}>{t('admin.customerDetails.pointsBreakdown')}</Text>
         <View style={styles.pointsRow}>
           <View style={styles.pointsItem}>
-            <Text style={styles.pointsLabel}>Redeemable</Text>
+            <Text style={styles.pointsLabel}>{t('admin.customerDetails.redeemable')}</Text>
             <Text style={[styles.pointsValue, styles.redeemable]}>
-              {customer.points_balance || 0}
+              {formatPoints(customer.points_balance || 0)}
             </Text>
           </View>
           <View style={styles.pointsItem}>
-            <Text style={styles.pointsLabel}>Pending</Text>
-            <Text style={[styles.pointsValue, styles.pending]}>
-              0
+            <Text style={styles.pointsLabel}>{t('admin.customerDetails.valueTzs')}</Text>
+            <Text style={[styles.pointsValue, styles.redeemable]}>
+              {formatTzs((customer.points_balance || 0) * (customer.point_value_tzs || 0))}
             </Text>
           </View>
         </View>
         <Text style={styles.pointsNote}>
-          Pending points become redeemable after 90 days
+          {t('admin.customerDetails.pointValueNote', { value: formatTzs(customer.point_value_tzs || 0) })}
         </Text>
       </View>
     </View>
   );
+
+  const renderStatement = () => {
+    const statementEntries = (statementData as any)?.entries || (statementData as any)?.transactions || [];
+    return (
+      <View style={styles.content}>
+        <View style={styles.statementControls}>
+          <Text style={styles.statementLabel}>{t('admin.customerDetails.dateRange')}</Text>
+          <View style={styles.dateRangeButtons}>
+            <TouchableOpacity
+              style={[styles.dateRangeButton, dateRange === 'this_month' && styles.dateRangeButtonActive]}
+              onPress={() => setDateRange('this_month')}
+            >
+              <Text style={[styles.dateRangeButtonText, dateRange === 'this_month' && styles.dateRangeButtonTextActive]}>
+                {t('admin.customerDetails.thisMonth')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dateRangeButton, dateRange === 'last_3_months' && styles.dateRangeButtonActive]}
+              onPress={() => setDateRange('last_3_months')}
+            >
+              <Text style={[styles.dateRangeButtonText, dateRange === 'last_3_months' && styles.dateRangeButtonTextActive]}>
+                {t('admin.customerDetails.last3Months')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dateRangeButton, dateRange === 'all' && styles.dateRangeButtonActive]}
+              onPress={() => setDateRange('all')}
+            >
+              <Text style={[styles.dateRangeButtonText, dateRange === 'all' && styles.dateRangeButtonTextActive]}>
+                {t('admin.customerDetails.all')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dateRangeButton, dateRange === 'custom' && styles.dateRangeButtonActive]}
+              onPress={() => setDateRange('custom')}
+            >
+              <Text style={[styles.dateRangeButtonText, dateRange === 'custom' && styles.dateRangeButtonTextActive]}>
+                {t('admin.customerDetails.custom')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {dateRange === 'custom' && (
+            <View style={styles.customDateInputs}>
+              <TextInput
+                style={styles.dateInput}
+                placeholder={t('admin.customerDetails.fromPlaceholder')}
+                value={customFromDate}
+                onChangeText={setCustomFromDate}
+              />
+              <TextInput
+                style={styles.dateInput}
+                placeholder={t('admin.customerDetails.toPlaceholder')}
+                value={customToDate}
+                onChangeText={setCustomToDate}
+              />
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={handleExportCSV}
+          >
+            <Text style={styles.exportButtonText}>{t('admin.customerDetails.shareCsv')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loadingStatement ? (
+          <ActivityIndicator size="large" color="#7A1F2B" style={styles.loadingIndicator} />
+        ) : Array.isArray(statementEntries) && statementEntries.length > 0 ? (
+          <View>
+            {statementEntries.map((entry: any, index: number) => {
+              const pointsChange = entry.points_change ?? entry.points ?? 0;
+              const desc = entry.description || `${(entry.type || '').toUpperCase()}: ${entry.reference || ''}`;
+              return (
+                <View key={index} style={styles.transactionCard}>
+                  <View style={styles.transactionHeader}>
+                    <Text style={styles.transactionType}>{entry.type}</Text>
+                    <Text style={styles.transactionDate}>{formatDate(entry.date)}</Text>
+                  </View>
+                  <Text style={styles.transactionDescription}>{desc}</Text>
+                  <View style={styles.transactionAmountRow}>
+                    <Text style={styles.transactionPoints}>
+                      {pointsChange >= 0 ? '+' : ''}{formatPoints(pointsChange)} {t('common.pts')}
+                    </Text>
+                    {entry.value_tzs ? (
+                      <Text style={styles.transactionValue}>
+                        {formatTzs(entry.value_tzs)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {entry.voided ? (
+                    <View style={styles.voidedBadge}>
+                      <Text style={styles.voidedText}>VOIDED</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+
+            <View style={styles.statementTotals}>
+              <Text style={styles.totalsTitle}>{t('admin.customerDetails.totals')}</Text>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>{t('admin.customerDetails.totalPointsEarned')}</Text>
+                <Text style={styles.totalValue}>+{formatPoints((statementData as any)?.totals?.points_earned ?? (statementData as any)?.totals?.total_points_earned ?? 0)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>{t('admin.customerDetails.totalPointsRedeemed')}</Text>
+                <Text style={styles.totalValue}>-{formatPoints((statementData as any)?.totals?.points_redeemed ?? (statementData as any)?.totals?.total_points_redeemed ?? 0)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>{t('admin.customerDetails.totalPurchaseValue')}</Text>
+                <Text style={styles.totalValue}>{formatTzs((statementData as any)?.totals?.total_purchase_value ?? (statementData as any)?.totals?.total_value ?? 0)}</Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>{t('admin.customerDetails.noTransactions')}</Text>
+        )}
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={styles.container} refreshControl={
@@ -314,15 +506,17 @@ export default function CustomerDetails() {
       </View>
 
       <View style={styles.tabsContainer}>
-        <Tab label="Overview" value="overview" />
-        <Tab label="Purchases" value="purchases" />
-        <Tab label="Points" value="points" />
-        <Tab label="Redemptions" value="redemptions" />
+        <Tab label={t('admin.customerDetails.overview')} value="overview" />
+        <Tab label={t('admin.customerDetails.purchases')} value="purchases" />
+        <Tab label={t('admin.customerDetails.points')} value="points" />
+        <Tab label={t('admin.customerDetails.statement')} value="statement" />
+        <Tab label={t('admin.customerDetails.redemptions')} value="redemptions" />
       </View>
 
       {activeTab === "overview" && renderOverview()}
       {activeTab === "purchases" && renderPurchases()}
       {activeTab === "points" && renderPoints()}
+      {activeTab === "statement" && renderStatement()}
       {activeTab === "redemptions" && renderRedemptions()}
 
       {/* Reset PIN Modal */}
@@ -694,5 +888,130 @@ const styles = StyleSheet.create({
     color: '#7A1F2B',
     fontWeight: '600',
     marginTop: 16,
+  },
+  statementControls: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statementLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#242424',
+    marginBottom: 12,
+  },
+  dateRangeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  dateRangeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#F3F3F3',
+  },
+  dateRangeButtonActive: {
+    backgroundColor: '#7A1F2B',
+  },
+  dateRangeButtonText: {
+    fontSize: 12,
+    color: '#242424',
+    fontWeight: '600',
+  },
+  dateRangeButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  customDateInputs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  dateInput: {
+    flex: 1,
+    backgroundColor: '#F3F3F3',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+  },
+  exportButton: {
+    backgroundColor: '#7A1F2B',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+  },
+  exportButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loadingIndicator: {
+    marginVertical: 40,
+  },
+  transactionType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#242424',
+  },
+  transactionDescription: {
+    fontSize: 14,
+    color: '#777777',
+    marginBottom: 4,
+  },
+  transactionAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  transactionValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#242424',
+  },
+  voidedBadge: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  voidedText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#C62828',
+  },
+  statementTotals: {
+    backgroundColor: '#F3F3F3',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+  },
+  totalsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#242424',
+    marginBottom: 12,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  totalLabel: {
+    fontSize: 14,
+    color: '#777777',
+  },
+  totalValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#242424',
   },
 });

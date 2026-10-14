@@ -58,6 +58,9 @@
     "@supabase/supabase-js": "^2.117.2",
     "axios": "^1.20.0",
     "expo-secure-store": "~57.0.4",
-    "react-hook-form": "^7.87.0"
+    "expo-sharing": "^57.0.23",
+    "i18next": "^26.4.4",
+    "react-hook-form": "^7.87.0",
+    "react-i18next": "^17.0.16"
   }
 }

@@ -22,11 +22,11 @@ router.get("/me", authMiddleware, requireCustomer, customerController.getCustome
 router.get("/me/points", authMiddleware, requireCustomer, customerPurchasesController.getPointsSummary.bind(customerPurchasesController));
 
 /**
- * GET /api/customer/me/purchases
- * Query: { page?, limit? }
+ * GET /api/customer/me/recent-activity
  * Protected: Requires authenticated user with customer role.
+ * Returns the last 5 transactions (purchases and redemptions).
  */
-router.get("/me/purchases", authMiddleware, requireCustomer, customerPurchasesController.getCustomerPurchases.bind(customerPurchasesController));
+router.get("/me/recent-activity", authMiddleware, requireCustomer, customerPurchasesController.getRecentActivity.bind(customerPurchasesController));
 
 /**
  * POST /api/customer/me/redemptions
@@ -43,16 +43,19 @@ router.post(
 
 /**
  * GET /api/customer/me/redemptions
- * Query: { page?, limit? }
  * Protected: Requires authenticated user with customer role.
  */
-router.get("/me/redemptions", authMiddleware, requireCustomer, customerRedemptionsController.listRedemptions.bind(customerRedemptionsController));
+router.get(
+  "/me/redemptions",
+  authMiddleware,
+  requireCustomer,
+  customerRedemptionsController.listRedemptions.bind(customerRedemptionsController)
+);
 
 /**
  * Compatibility aliases used by older clients and docs.
  */
 router.get("/points/summary", authMiddleware, requireCustomer, customerPurchasesController.getPointsSummary.bind(customerPurchasesController));
-router.get("/purchases", authMiddleware, requireCustomer, customerPurchasesController.getCustomerPurchases.bind(customerPurchasesController));
 router.post(
   "/redemptions",
   authMiddleware,
@@ -60,6 +63,11 @@ router.post(
   validateBody(createRedemptionSchema),
   customerRedemptionsController.createRedemption.bind(customerRedemptionsController)
 );
-router.get("/redemptions", authMiddleware, requireCustomer, customerRedemptionsController.listRedemptions.bind(customerRedemptionsController));
+router.get(
+  "/redemptions",
+  authMiddleware,
+  requireCustomer,
+  customerRedemptionsController.listRedemptions.bind(customerRedemptionsController)
+);
 
 export default router;

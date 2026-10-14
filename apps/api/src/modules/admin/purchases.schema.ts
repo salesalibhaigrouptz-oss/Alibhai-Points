@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const previewPurchaseSchema = z.object({
-  customer_code: z
-    .string({ required_error: "customer_code is required" })
-    .min(1, { message: "customer_code cannot be empty" })
-    .max(20, { message: "customer_code is too long" })
+  customer: z
+    .string({ required_error: "customer is required" })
+    .min(1, { message: "customer cannot be empty" })
+    .max(50, { message: "customer is too long" })
     .trim(),
   purchase_amount: z
     .number({ required_error: "purchase_amount is required" })
@@ -18,10 +18,10 @@ export const previewPurchaseSchema = z.object({
 export type PreviewPurchaseInput = z.infer<typeof previewPurchaseSchema>;
 
 export const recordPurchaseSchema = z.object({
-  customer_code: z
-    .string({ required_error: "customer_code is required" })
-    .min(1, { message: "customer_code cannot be empty" })
-    .max(20, { message: "customer_code is too long" })
+  customer: z
+    .string({ required_error: "customer is required" })
+    .min(1, { message: "customer cannot be empty" })
+    .max(50, { message: "customer is too long" })
     .trim(),
   purchase_amount: z
     .number({ required_error: "purchase_amount is required" })
@@ -32,8 +32,7 @@ export const recordPurchaseSchema = z.object({
     }),
   idempotency_key: z
     .string({ required_error: "idempotency_key is required" })
-    .min(1, { message: "idempotency_key cannot be empty" })
-    .max(255, { message: "idempotency_key is too long" }),
+    .uuid({ message: "idempotency_key must be a valid UUID" }),
 }).strict();
 
 export type RecordPurchaseInput = z.infer<typeof recordPurchaseSchema>;

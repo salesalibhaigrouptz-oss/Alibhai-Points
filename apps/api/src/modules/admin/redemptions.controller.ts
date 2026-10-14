@@ -39,6 +39,8 @@ export class AdminRedemptionsController {
           id,
           redemption_reference,
           points_redeemed,
+          point_value_tzs,
+          value_tzs,
           source,
           status,
           redeemed_at,
@@ -112,6 +114,8 @@ export class AdminRedemptionsController {
           id,
           redemption_reference,
           points_redeemed,
+          point_value_tzs,
+          value_tzs,
           source,
           status,
           redeemed_at,
@@ -315,6 +319,8 @@ export class AdminRedemptionsController {
         reference?: string;
         status?: string;
         points?: number;
+        point_value_tzs?: number;
+        value_tzs?: number;
         redeemable_points?: number;
       };
 
@@ -331,6 +337,8 @@ export class AdminRedemptionsController {
         reference: result.reference,
         status: result.status,
         points: result.points,
+        point_value_tzs: result.point_value_tzs,
+        value_tzs: result.value_tzs,
       });
     } catch (error) {
       next(error);

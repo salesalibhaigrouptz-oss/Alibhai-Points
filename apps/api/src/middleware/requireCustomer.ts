@@ -12,11 +12,7 @@ export function requireCustomer(req: Request, _res: Response, next: NextFunction
 
   if (!req.profile) {
     return next(
-      new AppError(
-        403,
-        "REGISTRATION_REQUIRED",
-        "Registration is not complete. Please provide your full name first."
-      )
+      new AppError(403, "NOT_A_CUSTOMER", "Access denied. Profile not found or registration incomplete.")
     );
   }
 
@@ -28,7 +24,7 @@ export function requireCustomer(req: Request, _res: Response, next: NextFunction
 
   if (req.profile.role !== "customer") {
     return next(
-      new AppError(403, "FORBIDDEN", "Access restricted to customers.")
+      new AppError(403, "NOT_A_CUSTOMER", "Access denied. Customer privileges required.")
     );
   }
 

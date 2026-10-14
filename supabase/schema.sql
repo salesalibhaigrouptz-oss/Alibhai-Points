@@ -194,10 +194,11 @@ end $$;
 
 -- 4.1 Create customer after OTP: profile + customer + ID (IS01) in one step
 create or replace function public.create_customer_profile(
-  p_user_id uuid, p_full_name text, p_phone text)
+  p_user_id uuid, p_full_name text, p_phone text, p_city text default null)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_name     text := trim(regexp_replace(coalesce(p_full_name,''), '\s+', ' ', 'g'));
+  v_city     text := trim(coalesce(p_city, ''));
   v_parts    text[];
   v_initials text;
   v_seq      integer;
@@ -218,8 +219,8 @@ begin
   insert into public.profiles (id, full_name, phone, role)
     values (p_user_id, v_name, p_phone, 'customer')
     on conflict (id) do nothing;
-  insert into public.customers (profile_id, customer_code, initials, sequence_number)
-    values (p_user_id, v_initials || lpad(v_seq::text, 2, '0'), v_initials, v_seq)
+  insert into public.customers (profile_id, customer_code, initials, sequence_number, city)
+    values (p_user_id, v_initials || lpad(v_seq::text, 2, '0'), v_initials, v_seq, nullif(v_city, ''))
     returning * into v_c;
   insert into public.customer_status_events (customer_id, previous_status, new_status, reason)
     values (v_c.id, null, 'active', 'Registered');

@@ -5,6 +5,11 @@ import {
   getDashboardMetrics,
   getCustomers,
   getCustomer,
+  getCustomerLookup,
+  getCustomerCities,
+  getTiers,
+  updateTier,
+  getCustomerStatement,
   getCustomerPurchases,
   getPurchases,
   getRedemptions,
@@ -25,13 +30,14 @@ import {
   getMyPurchases,
   getCustomerRedemptions as getMyRedemptions,
   resetCustomerPin,
+  getRecentActivity,
 } from "./api";
 
 // Auth hooks
 export const useMe = () => {
   return useQuery({
     queryKey: ["me"],
-    queryFn: fetchMe,
+    queryFn: () => fetchMe(),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
@@ -39,8 +45,8 @@ export const useMe = () => {
 export const useCompleteRegistration = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ fullName, token }: { fullName: string; token?: string }) =>
-      completeRegistration(fullName, token),
+    mutationFn: ({ fullName, city, token }: { fullName: string; city: string; token?: string }) =>
+      completeRegistration(fullName, city, token),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
     },
@@ -48,10 +54,10 @@ export const useCompleteRegistration = () => {
 };
 
 // Admin hooks
-export const useDashboardMetrics = () => {
+export const useDashboardMetrics = (city?: string) => {
   return useQuery({
-    queryKey: ["admin", "dashboard"],
-    queryFn: getDashboardMetrics,
+    queryKey: ["admin", "dashboard", city],
+    queryFn: () => getDashboardMetrics(city),
     staleTime: 30 * 1000, // 30 seconds
   });
 };
@@ -60,6 +66,8 @@ export const useCustomers = (params?: {
   search?: string;
   status?: string;
   near_deadline?: string;
+  city?: string;
+  tier?: string;
   page?: number;
   limit?: number;
 }) => {
@@ -75,6 +83,55 @@ export const useCustomer = (customerCode: string) => {
     queryKey: ["admin", "customer", customerCode],
     queryFn: () => getCustomer(customerCode),
     enabled: !!customerCode,
+    staleTime: 30 * 1000,
+  });
+};
+
+export const useCustomerLookup = (q: string) => {
+  return useQuery({
+    queryKey: ["admin", "customer-lookup", q],
+    queryFn: () => getCustomerLookup(q),
+    enabled: !!q && q.length >= 2,
+    staleTime: 30 * 1000,
+  });
+};
+
+export const useCustomerCities = () => {
+  return useQuery({
+    queryKey: ["admin", "customer-cities"],
+    queryFn: getCustomerCities,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+export const useTiers = () => {
+  return useQuery({
+    queryKey: ["admin", "tiers"],
+    queryFn: getTiers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+export const useUpdateTier = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tierId, minLifetimePurchases, pointValueTzs }: {
+      tierId: string;
+      minLifetimePurchases: number;
+      pointValueTzs: number;
+    }) => updateTier(tierId, minLifetimePurchases, pointValueTzs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+    },
+  });
+};
+
+export const useCustomerStatement = (identifier: string, from?: string, to?: string, format?: 'json' | 'csv') => {
+  return useQuery({
+    queryKey: ["admin", "customer-statement", identifier, from, to, format],
+    queryFn: () => getCustomerStatement(identifier, from, to, format),
+    enabled: !!identifier,
     staleTime: 30 * 1000,
   });
 };
@@ -161,8 +218,8 @@ export const useDirectRedeem = () => {
 
 export const usePreviewPurchase = () => {
   return useMutation({
-    mutationFn: ({ customerCode, purchaseAmount }: { customerCode: string; purchaseAmount: number }) =>
-      previewPurchase(customerCode, purchaseAmount),
+    mutationFn: ({ customer, purchaseAmount }: { customer: string; purchaseAmount: number }) =>
+      previewPurchase(customer, purchaseAmount),
   });
 };
 
@@ -170,14 +227,14 @@ export const useRecordPurchase = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
-      customerCode,
+      customer,
       purchaseAmount,
       idempotencyKey,
     }: {
-      customerCode: string;
+      customer: string;
       purchaseAmount: number;
       idempotencyKey?: string;
-    }) => recordPurchase(customerCode, purchaseAmount, idempotencyKey),
+    }) => recordPurchase(customer, purchaseAmount, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "purchases"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
@@ -297,5 +354,13 @@ export const useMyRedemptions = (params?: { page?: number; limit?: number }) => 
     queryKey: ["customer", "redemptions", params],
     queryFn: () => getMyRedemptions(params),
     staleTime: 30 * 1000,
+  });
+};
+
+export const useRecentActivity = () => {
+  return useQuery({
+    queryKey: ["customer", "recent-activity"],
+    queryFn: () => getRecentActivity(),
+    staleTime: 60 * 1000, // 1 minute
   });
 };

@@ -8,7 +8,7 @@ export const AUTH_MODE: AuthMode =
 
 export interface AuthService {
   mode: AuthMode;
-  signUp(params: { fullName?: string; phone: string; pin: string }): Promise<any>;
+  signUp(params: { fullName?: string; city?: string; phone: string; pin: string }): Promise<any>;
   signInWithPassword(params: { phone: string; pin: string }): Promise<any>;
   signOut(): Promise<void>;
   sendOtp?(phone: string): Promise<any>;
@@ -22,8 +22,8 @@ export interface AuthService {
  */
 export const pinAuthService: AuthService = {
   mode: "pin",
-  async signUp({ fullName, phone, pin }) {
-    return apiSignup(fullName || "", phone, pin);
+  async signUp({ fullName, city, phone, pin }) {
+    return apiSignup(fullName || "", city || "", phone, pin);
   },
   async signInWithPassword({ phone, pin }) {
     return apiLogin(phone, pin);

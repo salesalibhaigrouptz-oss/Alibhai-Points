@@ -1,82 +1,101 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useCustomer, usePreviewPurchase, useRecordPurchase, usePointRules } from '@/services/hooks';
-import { apiErrorMessage } from '@/services/api';
+import { useTranslation } from 'react-i18next';
+import { useCustomerLookup, usePreviewPurchase, useRecordPurchase } from '@/services/hooks';
+import { apiErrorMessage, formatPoints, formatTzs } from '@/services/api';
 
 const generateIdempotencyKey = () => `purchase-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 export default function RecordPurchase() {
   const router = useRouter();
-  const [customerId, setCustomerId] = useState('');
+  const { t } = useTranslation();
+  const [customerQuery, setCustomerQuery] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
-  const [searching, setSearching] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [customer, setCustomer] = useState<any>(null);
-  const [calculatedPoints, setCalculatedPoints] = useState<number | null>(null);
+  const [preview, setPreview] = useState<any>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-  
-  const { data: pointRules } = usePointRules();
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successData, setSuccessData] = useState<any>(null);
+
+  const { data: lookupResult, isLoading: lookupLoading } = useCustomerLookup(debouncedQuery);
   const previewMutation = usePreviewPurchase();
   const recordMutation = useRecordPurchase();
-  
-  // Manual customer fetch for search
-  const { refetch: refetchCustomer } = useCustomer(customerId, { enabled: false });
 
-  const handleSearchCustomer = async () => {
-    if (!customerId) {
-      Alert.alert('Error', 'Please enter a customer ID');
-      return;
-    }
-
-    setSearching(true);
-    try {
-      const { data: foundCustomer } = await refetchCustomer();
-      if (foundCustomer) {
-        setCustomer(foundCustomer);
+  // Debounce customer lookup (400ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (customerQuery.length >= 2) {
+        setDebouncedQuery(customerQuery);
       } else {
-        throw new Error('Customer not found');
+        setDebouncedQuery('');
+        setCustomer(null);
+        setPreview(null);
       }
-    } catch (error) {
-      Alert.alert('Error', 'Customer not found');
-      setCustomer(null);
-    } finally {
-      setSearching(false);
-    }
-  };
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [customerQuery]);
 
-  const calculatePoints = (amount: number) => {
-    if (!pointRules) return 0;
-    return Math.floor(amount / pointRules.tzsPerPoint);
-  };
+  // Update customer when lookup result changes
+  useEffect(() => {
+    if (lookupResult) {
+      setCustomer(lookupResult);
+      setPreview(null);
+    } else if (debouncedQuery && !lookupLoading) {
+      setCustomer(null);
+      setPreview(null);
+    }
+  }, [lookupResult, debouncedQuery, lookupLoading]);
 
   const handleAmountChange = async (value: string) => {
     setAmount(value);
     const numAmount = parseFloat(value) || 0;
     if (numAmount > 0 && customer) {
       try {
-        const preview = await previewMutation.mutateAsync({
-          customerCode: customer.customer_code,
+        const customerIdentifier =
+          customer.customer_code ||
+          customer.customer?.customer_code ||
+          customerQuery.trim();
+
+        if (!customerIdentifier) {
+          setPreview(null);
+          return;
+        }
+
+        const previewResult = await previewMutation.mutateAsync({
+          customer: customerIdentifier,
           purchaseAmount: numAmount,
         });
-        setCalculatedPoints(preview.points_earned);
+        setPreview(previewResult);
       } catch (error) {
         console.error('Failed to preview purchase:', error);
-        setCalculatedPoints(calculatePoints(numAmount));
+        setPreview(null);
       }
     } else {
-      setCalculatedPoints(null);
+      setPreview(null);
     }
   };
 
   const handleSubmit = async () => {
     if (!customer) {
-      Alert.alert('Error', 'Please search for a customer first');
+      Alert.alert(t('common.error'), t('admin.recordPurchase.notFound'));
       return;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid purchase amount');
+      Alert.alert(t('common.error'), t('admin.recordPurchase.purchaseAmount'));
+      return;
+    }
+
+    const customerIdentifier =
+      customer.customer_code ||
+      customer.customer?.customer_code ||
+      customerQuery.trim();
+
+    if (!customerIdentifier) {
+      Alert.alert(t('common.error'), t('admin.recordPurchase.notFound'));
       return;
     }
 
@@ -88,82 +107,119 @@ export default function RecordPurchase() {
       setIdempotencyKey(key);
 
       const result = await recordMutation.mutateAsync({
-        customerCode: customer.customer_code,
+        customer: customerIdentifier,
         purchaseAmount: parseFloat(amount),
         idempotencyKey: key,
       });
-      
-      Alert.alert(
-        'Success',
-        `Purchase recorded!\nCustomer: ${customer.profiles?.full_name}\nAmount: TZS ${parseFloat(amount).toLocaleString()}\nPoints: ${result.points_earned}\nReference: ${result.reference}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setCustomerId('');
-              setAmount('');
-              setCustomer(null);
-              setCalculatedPoints(null);
-              setIdempotencyKey(null);
-            },
-          },
-        ]
-      );
+
+      setSuccessData(result);
+      setShowSuccess(true);
     } catch (error) {
-      Alert.alert('Error', apiErrorMessage(error));
+      Alert.alert(t('common.error'), apiErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleReset = () => {
+    setCustomerQuery('');
+    setAmount('');
+    setCustomer(null);
+    setPreview(null);
+    setIdempotencyKey(null);
+    setShowSuccess(false);
+    setSuccessData(null);
+    setDebouncedQuery('');
+  };
+
+  // Success screen
+  if (showSuccess && successData) {
+    return (
+      <ScrollView style={styles.container}>
+        <View style={styles.card}>
+          <View style={styles.successIcon}>
+            <Text style={styles.successIconText}>✓</Text>
+          </View>
+          <Text style={styles.successTitle}>{t('admin.recordPurchase.success')}</Text>
+          <Text style={styles.successSubtitle}>{t('admin.recordPurchase.successSubtitle')}</Text>
+
+          <View style={styles.successInfo}>
+            <Text style={styles.successLabel}>Reference</Text>
+            <Text style={styles.successValue}>{successData.reference}</Text>
+          </View>
+
+          <View style={styles.successInfo}>
+            <Text style={styles.successLabel}>{t('admin.recordPurchase.pointsToEarn')}</Text>
+            <Text style={styles.successValue}>+{formatPoints(successData.points_earned)}</Text>
+          </View>
+
+          <View style={styles.successInfo}>
+            <Text style={styles.successLabel}>{t('admin.recordPurchase.newTier')}</Text>
+            <Text style={styles.successValue}>{successData.tier_after}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={handleReset}
+          >
+            <Text style={styles.submitButtonText}>{t('admin.recordPurchase.recordAnother')}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>Record Purchase</Text>
-        <Text style={styles.subtitle}>Enter customer ID and purchase amount</Text>
+        <Text style={styles.title}>{t('admin.recordPurchase.title')}</Text>
+        <Text style={styles.subtitle}>{t('admin.recordPurchase.subtitle')}</Text>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Customer ID</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., IS01"
-              value={customerId}
-              onChangeText={setCustomerId}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={styles.searchButton}
-              onPress={handleSearchCustomer}
-              disabled={searching}
-            >
-              <Text style={styles.searchButtonText}>
-                {searching ? 'Searching...' : 'Search'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.label}>{t('admin.recordPurchase.customerOrPhone')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('admin.recordPurchase.customerPlaceholder')}
+            value={customerQuery}
+            onChangeText={setCustomerQuery}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          {lookupLoading && (
+            <ActivityIndicator size="small" color="#7A1F2B" style={styles.loadingIndicator} />
+          )}
         </View>
 
         {customer && (
           <View style={styles.customerInfo}>
-            <Text style={styles.customerInfoTitle}>Customer Found</Text>
-            <Text style={styles.customerName}>{customer.profiles?.full_name || 'Unknown'}</Text>
-            <Text style={styles.customerDetail}>ID: {customer.customer_code}</Text>
-            <Text style={styles.customerDetail}>Phone: {customer.profiles?.phone || 'N/A'}</Text>
-            <View style={[styles.statusBadge, customer.status === 'active' ? styles.statusActive : styles.statusInactive]}>
-              <Text style={[styles.statusText, customer.status === 'active' ? styles.statusTextActive : styles.statusTextInactive]}>
-                {customer.status}
+            <Text style={styles.customerInfoTitle}>{t('admin.recordPurchase.customerFound')}</Text>
+            <Text style={styles.customerName}>{customer.full_name || customer.profile?.full_name}</Text>
+            <Text style={styles.customerDetail}>ID: {customer.customer_code || customer.customer?.customer_code}</Text>
+            <Text style={styles.customerDetail}>{t('admin.recordPurchase.phone')}: {customer.phone || customer.profile?.phone}</Text>
+            <Text style={styles.customerDetail}>{t('admin.recordPurchase.city')}: {customer.city || customer.customer?.city}</Text>
+            <Text style={styles.customerDetail}>{t('admin.recordPurchase.tier')}: {typeof customer.tier === 'string' ? customer.tier : (customer.tier?.name || 'N/A')}</Text>
+            <View style={[styles.statusBadge, (customer.status || customer.customer?.status) === 'active' ? styles.statusActive : styles.statusInactive]}>
+              <Text style={[styles.statusText, (customer.status || customer.customer?.status) === 'active' ? styles.statusTextActive : styles.statusTextInactive]}>
+                {(customer.status || customer.customer?.status) === 'active' ? t('home.statusActive') : t('home.statusInactive')}
               </Text>
             </View>
+            {(customer.last_purchase_at || customer.last_transaction_at) && (
+              <Text style={styles.customerDetail}>
+                {t('admin.recordPurchase.lastPurchase')}: {new Date(customer.last_purchase_at || customer.last_transaction_at).toLocaleDateString()}
+              </Text>
+            )}
           </View>
         )}
 
+        {customerQuery && !lookupLoading && !customer && (
+          <Text style={styles.notFoundText}>{t('admin.recordPurchase.notFound')}</Text>
+        )}
+
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Purchase Amount (TZS)</Text>
+          <Text style={styles.label}>{t('admin.recordPurchase.purchaseAmount')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g., 50000"
+            placeholder={t('admin.recordPurchase.amountPlaceholder')}
             value={amount}
             onChangeText={handleAmountChange}
             keyboardType="numeric"
@@ -171,23 +227,47 @@ export default function RecordPurchase() {
           />
         </View>
 
-        {calculatedPoints !== null && calculatedPoints > 0 && (
-          <View style={styles.pointsPreview}>
-            <Text style={styles.pointsPreviewTitle}>Points to be awarded</Text>
-            <Text style={styles.pointsPreviewValue}>+{calculatedPoints} points</Text>
-            <Text style={styles.pointsPreviewNote}>
-              {pointRules.tzsPerPoint.toLocaleString()} TZS = 1 point
-            </Text>
+        {preview && (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>{t('admin.recordPurchase.preview')}</Text>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>{t('admin.recordPurchase.pointsToEarn')}</Text>
+              <Text style={styles.previewValue}>+{formatPoints(preview.points_earned)}</Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>{t('admin.recordPurchase.currentTier')}</Text>
+              <Text style={styles.previewValue}>{preview.tier_before}</Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>{t('admin.recordPurchase.newTier')}</Text>
+              <Text style={styles.previewValue}>{preview.tier_after}</Text>
+            </View>
+
+            {preview.tier_will_change && (
+              <View style={styles.tierChangeBanner}>
+                <Text style={styles.tierChangeText}>
+                  {t('admin.recordPurchase.tierChange', { tier: preview.tier_after })}
+                </Text>
+              </View>
+            )}
+
+            {(preview.will_reactivate || preview.old_points_will_expire_first) && (
+              <View style={styles.warningBanner}>
+                <Text style={styles.warningText}>
+                  {t('admin.recordPurchase.reactivationWarning')}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
         <TouchableOpacity
-          style={[styles.submitButton, (!customer || !amount || loading || searching) && styles.submitButtonDisabled]}
+          style={[styles.submitButton, (!customer || !amount || loading || previewMutation.isPending) && styles.submitButtonDisabled]}
           onPress={handleSubmit}
-          disabled={!customer || !amount || loading || searching}
+          disabled={!customer || !amount || loading || previewMutation.isPending}
         >
           <Text style={styles.submitButtonText}>
-            {loading ? 'Recording...' : 'Record Purchase'}
+            {loading ? t('admin.recordPurchase.recording') : t('admin.recordPurchase.submit')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -232,26 +312,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    flex: 1,
     backgroundColor: '#F3F3F3',
     borderRadius: 8,
     padding: 14,
     fontSize: 16,
   },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  searchButton: {
-    backgroundColor: '#242424',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  searchButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+  loadingIndicator: {
+    marginTop: 8,
   },
   customerInfo: {
     backgroundColor: '#F3F3F3',
@@ -299,27 +366,59 @@ const styles = StyleSheet.create({
   statusTextInactive: {
     color: '#C62828',
   },
-  pointsPreview: {
+  notFoundText: {
+    fontSize: 14,
+    color: '#C62828',
+    marginBottom: 20,
+  },
+  previewCard: {
     backgroundColor: '#E8F5E9',
     borderRadius: 8,
     padding: 16,
     marginBottom: 20,
-    alignItems: 'center',
   },
-  pointsPreviewTitle: {
-    fontSize: 12,
-    color: '#2E7D32',
-    marginBottom: 4,
-  },
-  pointsPreviewValue: {
-    fontSize: 32,
+  previewTitle: {
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#2E7D32',
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  pointsPreviewNote: {
-    fontSize: 12,
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  previewLabel: {
+    fontSize: 14,
     color: '#777777',
+  },
+  previewValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#242424',
+  },
+  tierChangeBanner: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  tierChangeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  warningBanner: {
+    backgroundColor: '#FF9800',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   submitButton: {
     backgroundColor: '#7A1F2B',
@@ -334,5 +433,49 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  successIconText: {
+    fontSize: 48,
+    color: '#2E7D32',
+    fontWeight: 'bold',
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#242424',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successSubtitle: {
+    fontSize: 14,
+    color: '#777777',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  successInfo: {
+    backgroundColor: '#F3F3F3',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+  },
+  successLabel: {
+    fontSize: 12,
+    color: '#777777',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  successValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#242424',
   },
 });

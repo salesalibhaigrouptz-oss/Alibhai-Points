@@ -100,15 +100,17 @@ export async function apiLogin(phone: string, pin: string): Promise<any> {
 }
 
 /**
- * Pure Phone + Name + PIN sign up API call.
+ * Pure Phone + Name + City + PIN sign up API call.
  */
 export async function apiSignup(
   fullName: string,
+  city: string,
   phone: string,
   pin: string
 ): Promise<any> {
   const res = await apiClient.post("/api/auth/signup", {
     fullName,
+    city,
     phone,
     pin,
   });
@@ -127,41 +129,12 @@ export function apiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
     const errorCode = data?.error?.code;
-    
-    // Handle specific backend error codes with bilingual messages
+
+    // Return error code for translation in UI components
     if (errorCode) {
-      switch (errorCode) {
-        case 'UNAUTHORIZED':
-          return "Hujathibitishwa. Tafadhali ingia. / Unauthorized. Please sign in.";
-        case 'INVALID_TOKEN':
-          return "Token batili au imesha. Tafadhali ingia tena. / Invalid or expired token. Please sign in again.";
-        case 'ACCOUNT_DISABLED':
-          return "Akaunti yako imezimwa. Wasiliana na ofisi. / Your account has been disabled. Contact the office.";
-        case 'NOT_ADMIN':
-          return "Huna ruhusa ya admin. / You do not have admin access.";
-        case 'FORBIDDEN':
-          return "Huna ruhusa ya kufanya kitendo hiki. / You do not have permission for this action.";
-        case 'NOT_FOUND':
-          return "Rekodi haijapatikana. / Record not found.";
-        case 'VALIDATION_ERROR':
-          return "Tafadhali angalia data yako na ujaribu tena. / Please check your data and try again.";
-        case 'INVALID_NAME':
-          return "Jina batili. Tumia herufi, nafasi na alama pekee. / Invalid name. Use letters, spaces and punctuation only.";
-        case 'CUSTOMER_NOT_FOUND':
-          return "Mteja hayapatikani. / Customer not found.";
-        case 'INSUFFICIENT_REDEEMABLE_POINTS':
-          return "Huna pointi za kutosha za kutumia. / You don't have enough redeemable points.";
-        case 'POINTS_ALREADY_USED':
-          return "Pointi hizi zimeshatumika. Haupwezi kufuta ununuzi huu. / These points have already been used. Cannot void this purchase.";
-        case 'RATE_LIMIT_EXCEEDED':
-          return "Majaribio mengi mno. Tafadhali subiri kidogo kisha ujaribu tena. / Too many attempts. Please wait a moment.";
-        case 'TOO_MANY_ATTEMPTS':
-          return "Majaribio mengi mno ya kuingia. Tafadhali subiri dakika chache. / Too many login attempts. Please wait a few minutes.";
-        case 'INTERNAL_SERVER_ERROR':
-          return "Kuna hitilafu ya seva. Tafadhali jaribu tena baadaye. / Server error. Please try again later.";
-      }
+      return errorCode;
     }
-    
+
     if (data && typeof data === "object") {
       // Backend sendError format: { success: false, error: { message, code } }
       if ("error" in data && typeof (data as any).error === "object") {
@@ -175,31 +148,28 @@ export function apiErrorMessage(error: unknown): string {
 
     const status = error.response?.status;
     if (status === 401) {
-      return "Kipindi chako kimeisha. Tafadhali ingia tena. / Your session has expired. Please sign in again.";
+      return "INVALID_TOKEN";
     }
     if (status === 403) {
-      return "Huna ruhusa ya kufanya kitendo hiki. / You do not have permission for this action.";
+      return "FORBIDDEN";
     }
     if (status === 404) {
-      return "Rekodi au huduma haijapatikana. / Record not found.";
+      return "NOT_FOUND";
     }
     if (status === 409) {
-      return "Hitilafu ya mgongano wa data. / Conflict error.";
+      return "CONFLICT";
     }
     if (status === 429) {
-      return "Majaribio mengi mno. Tafadhali subiri kidogo kisha ujaribu tena. / Too many attempts. Please wait a moment.";
+      return "RATE_LIMIT_EXCEEDED";
     }
   }
 
   const message = error instanceof Error ? error.message : "";
   if (/network error|failed to fetch|network request failed/i.test(message)) {
-    return "Hakuna mtandao wa intaneti. Angalia muunganisho wako na ujaribu tena. / No internet connection. Check your connection and try again.";
+    return "NETWORK_ERROR";
   }
 
-  return (
-    message ||
-    "Kuna hitilafu imetokea. Tafadhali jaribu tena. / Something went wrong. Please try again."
-  );
+  return message || "GENERIC_ERROR";
 }
 
 export type UserProfile = {
@@ -221,6 +191,7 @@ export type UserProfile = {
     status: string;
     points_balance: number;
     last_transaction_at: string | null;
+    city?: string | null;
   } | null;
   user_id?: string;
   phone?: string | null;
@@ -239,10 +210,11 @@ export async function fetchMe(token?: string): Promise<UserProfile> {
 }
 
 /**
- * Calls POST /api/auth/complete-registration { full_name }
+ * Calls POST /api/auth/complete-registration { full_name, city }
  */
 export async function completeRegistration(
   fullName: string,
+  city: string,
   token?: string
 ): Promise<{
   created: boolean;
@@ -252,7 +224,7 @@ export async function completeRegistration(
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await apiClient.post(
     "/api/auth/complete-registration",
-    { full_name: fullName },
+    { full_name: fullName, city },
     { headers }
   );
   return response.data?.data || response.data;
@@ -364,9 +336,9 @@ export function formatTzs(value: number): string {
 }
 
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "Not available";
+  if (!value) return "Never";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
+  if (Number.isNaN(date.getTime())) return "Never";
   return new Intl.DateTimeFormat("en-TZ", {
     day: "numeric",
     month: "short",
@@ -374,9 +346,14 @@ export function formatDate(value: string | null | undefined): string {
   }).format(date);
 }
 
+export function formatDaysLeft(days: number | null | undefined): string {
+  if (days === null || days === undefined) return "—";
+  return `${days} days left`;
+}
+
 // Admin API endpoints
 
-export async function getDashboardMetrics(): Promise<{
+export async function getDashboardMetrics(city?: string): Promise<{
   customers: {
     total: number;
     active: number;
@@ -404,8 +381,30 @@ export async function getDashboardMetrics(): Promise<{
   redemptions: {
     pending_count: number;
   };
+  city_breakdown?: Array<{
+    city: string;
+    count: number;
+  }>;
+  tier_counts?: Array<{
+    tier: string;
+    count: number;
+  }>;
+  by_city?: Array<{
+    city: string;
+    customers: number;
+    active: number;
+    purchases_today: number;
+    purchases_this_month: number;
+    purchase_value_today: number;
+    purchase_value_this_month: number;
+  }>;
+  by_tier?: Array<{
+    tier: string;
+    customer_count: number;
+  }>;
 }> {
-  const response = await apiClient.get<{ success: boolean; data: any }>("/api/admin/dashboard");
+  const params = city ? { city } : {};
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/admin/dashboard", { params });
   return response.data.data;
 }
 
@@ -413,6 +412,8 @@ export async function getCustomers(params?: {
   search?: string;
   status?: string;
   near_deadline?: string;
+  city?: string;
+  tier?: string;
   page?: number;
   limit?: number;
 }): Promise<{
@@ -431,6 +432,104 @@ export async function getCustomers(params?: {
 export async function getCustomer(customerCode: string): Promise<any> {
   const response = await apiClient.get<{ success: boolean; data: any }>(
     `/api/admin/customers/${encodeURIComponent(customerCode)}`
+  );
+  return response.data.data;
+}
+
+export async function getCustomerLookup(q: string): Promise<{
+  id: string;
+  customer_code: string;
+  full_name: string;
+  phone: string;
+  city: string;
+  tier: string;
+  status: string;
+  points_balance: number;
+  lifetime_purchases: number;
+  activity_deadline: string | null;
+  last_purchase_at: string | null;
+  customer?: any;
+  profile?: any;
+} | null> {
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/admin/customers/lookup", {
+    params: { q }
+  });
+  const data = response.data.data;
+  if (!data) return null;
+
+  const cust = data.customer || data;
+  const prof = data.profile || {};
+  const tierObj = data.tier || {};
+
+  return {
+    ...data,
+    id: cust.id || data.id,
+    customer_code: cust.customer_code || data.customer_code,
+    full_name: prof.full_name || data.full_name || cust.full_name,
+    phone: prof.phone || data.phone || cust.phone,
+    city: cust.city || data.city,
+    status: cust.status || data.status,
+    tier: typeof data.tier === "string" ? data.tier : (tierObj.name || data.tier_name || "Bronze"),
+    points_balance: cust.points_balance ?? data.points_balance ?? 0,
+    lifetime_purchases: cust.lifetime_purchases ?? data.lifetime_purchases ?? 0,
+    activity_deadline: cust.activity_deadline || data.activity_deadline || null,
+    last_purchase_at: cust.last_transaction_at || data.last_purchase_at || null,
+  };
+}
+
+export async function getCustomerCities(): Promise<string[]> {
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/admin/customers/cities");
+  const rawData = response.data?.data ?? response.data;
+  const list = Array.isArray(rawData)
+    ? rawData
+    : Array.isArray(rawData?.cities)
+    ? rawData.cities
+    : [];
+  return list
+    .map((item: any) => (typeof item === "string" ? item : item?.city))
+    .filter((city: any): city is string => typeof city === "string" && city.length > 0);
+}
+
+export async function getTiers(): Promise<Array<{
+  id: string;
+  name: string;
+  min_lifetime_purchases: number;
+  point_value_tzs: number;
+}>> {
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/admin/tiers");
+  const rawData = response.data?.data ?? response.data;
+  return Array.isArray(rawData) ? rawData : (rawData?.tiers || []);
+}
+
+export async function updateTier(
+  tierId: string,
+  minLifetimePurchases: number,
+  pointValueTzs: number
+): Promise<any> {
+  const response = await apiClient.put<{ success: boolean; data: any }>(
+    `/api/admin/tiers/${encodeURIComponent(tierId)}`,
+    {
+      min_lifetime_purchases: minLifetimePurchases,
+      point_value_tzs: pointValueTzs,
+    }
+  );
+  return response.data.data;
+}
+
+export async function getCustomerStatement(
+  identifier: string,
+  from?: string,
+  to?: string,
+  format?: 'json' | 'csv'
+): Promise<any> {
+  const params: any = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  if (format) params.format = format;
+
+  const response = await apiClient.get<{ success: boolean; data: any }>(
+    `/api/admin/customers/${encodeURIComponent(identifier)}/statement`,
+    { params }
   );
   return response.data.data;
 }
@@ -516,21 +615,26 @@ export async function directRedeem(customerCode: string, points: number): Promis
   return response.data.data;
 }
 
-export async function previewPurchase(customerCode: string, purchaseAmount: number): Promise<{
+export async function previewPurchase(customer: string, purchaseAmount: number): Promise<{
   customer_name: string;
   customer_status: string;
   points_earned: number;
   amount_per_point: number;
+  tier_before: string;
+  tier_after: string;
+  tier_will_change: boolean;
+  will_reactivate: boolean;
+  old_points_will_expire_first: boolean;
 }> {
   const response = await apiClient.post<{ success: boolean; data: any }>("/api/admin/purchases/preview", {
-    customer_code: customerCode,
+    customer,
     purchase_amount: purchaseAmount,
   });
   return response.data.data;
 }
 
 export async function recordPurchase(
-  customerCode: string,
+  customer: string,
   purchaseAmount: number,
   idempotencyKey?: string
 ): Promise<{
@@ -540,9 +644,10 @@ export async function recordPurchase(
   customer_status: string;
   duplicate: boolean;
   purchase_id: string;
+  tier_after: string;
 }> {
   const response = await apiClient.post<{ success: boolean; data: any }>("/api/admin/purchases", {
-    customer_code: customerCode,
+    customer,
     purchase_amount: purchaseAmount,
     idempotency_key: idempotencyKey || `purchase-${Date.now()}`,
   });
@@ -639,6 +744,19 @@ export async function getCustomerPointsSummary(): Promise<{
   requested_points: number;
   redeemed_points: number;
   expired_points: number;
+  redeemable_value_tzs: number;
+  waiting_value_tzs: number;
+  point_value_tzs: number;
+  tier: string;
+  lifetime_purchases: number;
+  next_tier: string | null;
+  next_tier_remaining_tzs: number | null;
+  next_tier_point_value_tzs: number | null;
+  pending_request: {
+    points: number;
+    value_tzs: number;
+    reference: string;
+  } | null;
   next_unlock_at: string | null;
   activity_deadline: string | null;
   days_left: number | null;
@@ -652,6 +770,7 @@ export async function createCustomerRedemption(points: number): Promise<{
   reference: string;
   status: string;
   points: number;
+  value_tzs?: number;
 }> {
   const response = await apiClient.post<{ success: boolean; data: any }>(
     "/api/customer/me/redemptions",
@@ -681,6 +800,11 @@ export async function getMyPurchases(params?: {
     { params }
   );
   return response.data.data;
+}
+
+export async function getRecentActivity(): Promise<any[]> {
+  const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/me/recent-activity");
+  return response.data.data || [];
 }
 
 export async function getCustomerRedemptions(params?: {

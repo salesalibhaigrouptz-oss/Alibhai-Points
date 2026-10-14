@@ -28,6 +28,7 @@ export default function AdminLayout() {
       <Stack.Screen name="redemptions" options={{ headerShown: false }} />
       <Stack.Screen name="point-rules" options={{ headerShown: false }} />
       <Stack.Screen name="audit-logs" options={{ headerShown: false }} />
+      <Stack.Screen name="tiers" options={{ headerShown: false }} />
     </Stack>
   );
 }

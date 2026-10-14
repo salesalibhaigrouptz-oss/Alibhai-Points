@@ -18,6 +18,8 @@ export interface Customer {
   customer_code: string;
   initials: string;
   sequence_number: number;
+  city: string;
+  tier: string;
   last_transaction_at: string | null;
   status: "active" | "inactive";
   points_balance: number;
