@@ -695,13 +695,14 @@ export function ProfileScreen() {
       {status === "inactive" ? (
         <InactiveNotice expired={unusedPointsExpired} />
       ) : null}
-      <PrimaryButton
-        label={t('profile.logout')}
-        onPress={() => void signOut().then(() => router.replace("/(auth)/welcome"))}
-        secondary
-        testID="profile-sign-out"
-        style={{ marginBottom: 20 }}
-      />
+      <View style={{ marginBottom: 150 }}>
+        <PrimaryButton
+          label={t('profile.logout')}
+          onPress={() => void signOut().then(() => router.replace("/(auth)/welcome"))}
+          secondary
+          testID="profile-sign-out"
+        />
+      </View>
     </Page>
   );
 }

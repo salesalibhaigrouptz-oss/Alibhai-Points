@@ -68,6 +68,10 @@ function ClassicTabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: true,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          flexShrink: 0,
+        },
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.background,

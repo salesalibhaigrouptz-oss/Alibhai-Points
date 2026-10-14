@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  ScrollView as HorizontalScrollView,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import * as Sharing from 'expo-sharing';
@@ -534,13 +535,18 @@ export default function CustomerDetails() {
         <Text style={styles.headerSubtitle}>{customer.customer_code}</Text>
       </View>
 
-      <View style={styles.tabsContainer}>
+      <HorizontalScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsContainer}
+        contentContainerStyle={styles.tabsContent}
+      >
         <Tab label={t('admin.customerDetails.overview')} value="overview" />
         <Tab label={t('admin.customerDetails.purchases')} value="purchases" />
         <Tab label={t('admin.customerDetails.points')} value="points" />
         <Tab label={t('admin.customerDetails.statement')} value="statement" />
         <Tab label={t('admin.customerDetails.redemptions')} value="redemptions" />
-      </View>
+      </HorizontalScrollView>
 
       {activeTab === "overview" && renderOverview()}
       {activeTab === "purchases" && renderPurchases()}
@@ -631,15 +637,18 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   tabsContainer: {
-    flexDirection: "row",
     backgroundColor: "#FFFFFF",
     padding: 4,
   },
+  tabsContent: {
+    flexDirection: "row",
+  },
   tab: {
-    flex: 1,
     padding: 12,
+    paddingHorizontal: 16,
     alignItems: "center",
     borderRadius: 8,
+    minWidth: 80,
   },
   tabActive: {
     backgroundColor: "#7A1F2B",
@@ -648,6 +657,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#777777",
     fontWeight: "600",
+    flexShrink: 0,
   },
   tabTextActive: {
     color: "#FFFFFF",
