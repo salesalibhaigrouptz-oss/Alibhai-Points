@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
+import { normalizeRecentActivity } from "../../utils/recent-activity.js";
 
 export class CustomerPurchasesController {
   /**
@@ -56,21 +57,22 @@ export class CustomerPurchasesController {
         throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer record not found");
       }
 
-      const { data, error } = await supabase.rpc("get_recent_activity", {
+      let { data, error } = await supabase.rpc("get_recent_activity", {
         p_customer_id: customer.id,
+        p_limit: 5,
       });
+
+      if (error && /could not choose the best candidate|does not exist|PGRST202/i.test(error.message)) {
+        ({ data, error } = await supabase.rpc("get_recent_activity", {
+          p_customer_id: customer.id,
+        }));
+      }
 
       if (error) {
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
-      if (!data) {
-        // Return empty array if no activity
-        sendSuccess(res, []);
-        return;
-      }
-
-      sendSuccess(res, data);
+      sendSuccess(res, normalizeRecentActivity(data, 5));
     } catch (error) {
       next(error);
     }

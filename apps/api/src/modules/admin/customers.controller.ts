@@ -3,6 +3,7 @@ import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
 import { toE164 } from "../../utils/phone.js";
+import { normalizeRecentActivity } from "../../utils/recent-activity.js";
 import type { UpdateCustomerStatusInput } from "./schema.js";
 
 export class AdminCustomersController {
@@ -228,6 +229,8 @@ export class AdminCustomersController {
           status,
           points_balance,
           last_transaction_at,
+          city,
+          tier_id,
           created_at,
           updated_at,
           profiles!inner (
@@ -236,6 +239,12 @@ export class AdminCustomersController {
             phone,
             is_active,
             created_at
+          ),
+          loyalty_tiers (
+            id,
+            name,
+            min_lifetime_purchases,
+            point_value_tzs
           )
         `)
         .eq("customer_code", customerCode.toUpperCase())
@@ -245,7 +254,47 @@ export class AdminCustomersController {
         throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
       }
 
-      sendSuccess(res, data);
+      const { data: purchaseAgg } = await supabase
+        .from("purchases")
+        .select("purchase_amount")
+        .eq("customer_id", data.id)
+        .eq("status", "completed");
+
+      const lifetimePurchases = (purchaseAgg || []).reduce(
+        (sum: number, row: { purchase_amount: number }) => sum + Number(row.purchase_amount || 0),
+        0
+      );
+
+      const { data: ruleData } = await supabase
+        .from("point_rules")
+        .select("inactivity_days")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      const lastActivity = data.last_transaction_at || data.created_at;
+      let activityDeadline: string | null = null;
+      if (lastActivity && ruleData?.inactivity_days) {
+        const deadline = new Date(lastActivity);
+        deadline.setDate(deadline.getDate() + Number(ruleData.inactivity_days));
+        activityDeadline = deadline.toISOString();
+      }
+
+      const tier = (data as any).loyalty_tiers;
+      sendSuccess(res, {
+        ...data,
+        city: (data as any).city,
+        tier: tier
+          ? {
+              id: tier.id,
+              name: tier.name,
+              min_lifetime_purchases: Number(tier.min_lifetime_purchases),
+              point_value_tzs: Number(tier.point_value_tzs),
+            }
+          : null,
+        point_value_tzs: tier ? Number(tier.point_value_tzs) : 0,
+        lifetime_purchases: lifetimePurchases,
+        activity_deadline: activityDeadline,
+      });
     } catch (error) {
       next(error);
     }
@@ -278,6 +327,16 @@ export class AdminCustomersController {
         throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters");
       }
 
+      const { data: customerData } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("customer_code", customerCode.toUpperCase())
+        .single();
+
+      if (!customerData) {
+        throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+      }
+
       const { data, error, count } = await supabase
         .from("purchases")
         .select(`
@@ -288,12 +347,9 @@ export class AdminCustomersController {
           amount_per_point_used,
           status,
           purchased_at,
-          created_at,
-          customers!inner (
-            customer_code
-          )
+          created_at
         `, { count: "exact" })
-        .eq("customers.customer_code", customerCode.toUpperCase())
+        .eq("customer_id", customerData.id)
         .order("purchased_at", { ascending: false })
         .range(offset, offset + limitNum - 1);
 
@@ -303,6 +359,78 @@ export class AdminCustomersController {
 
       sendSuccess(res, {
         purchases: data,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: count || 0,
+          pages: Math.ceil((count || 0) / limitNum),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/admin/customers/:customerCode/redemptions
+   *
+   * Get redemptions for a specific customer, paginated, newest first.
+   */
+  async getCustomerRedemptions(
+    req: Request<{ customerCode: string }, {}, {}, { page?: string; limit?: string }>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const adminUser = req.user;
+      if (!adminUser) {
+        throw new AppError(401, "UNAUTHORIZED", "Authentication required");
+      }
+
+      const { customerCode } = req.params;
+      const { page = "1", limit = "20" } = req.query;
+
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const offset = (pageNum - 1) * limitNum;
+
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters");
+      }
+
+      const { data: customerData } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("customer_code", customerCode.toUpperCase())
+        .single();
+
+      if (!customerData) {
+        throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+      }
+
+      const { data, error, count } = await supabase
+        .from("point_redemptions")
+        .select(`
+          id,
+          redemption_reference,
+          points_redeemed,
+          source,
+          status,
+          redeemed_at,
+          completed_at,
+          cancelled_at,
+          cancel_reason
+        `, { count: "exact" })
+        .eq("customer_id", customerData.id)
+        .order("redeemed_at", { ascending: false })
+        .range(offset, offset + limitNum - 1);
+
+      if (error) {
+        throw new AppError(500, "DATABASE_ERROR", error.message);
+      }
+
+      sendSuccess(res, {
+        redemptions: data,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -635,19 +763,22 @@ export class AdminCustomersController {
         throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
       }
 
-      const { data, error } = await supabase.rpc("get_recent_activity", {
+      let { data, error } = await supabase.rpc("get_recent_activity", {
         p_customer_id: customerData.id,
+        p_limit: 10,
       });
+
+      if (error && /could not choose the best candidate|does not exist|PGRST202/i.test(error.message)) {
+        ({ data, error } = await supabase.rpc("get_recent_activity", {
+          p_customer_id: customerData.id,
+        }));
+      }
 
       if (error) {
         throw new AppError(500, "RPC_ERROR", error.message);
       }
 
-      if (!data || typeof data !== "object") {
-        throw new AppError(500, "RPC_ERROR", "Unexpected response from get_recent_activity");
-      }
-
-      sendSuccess(res, data);
+      sendSuccess(res, normalizeRecentActivity(data, 10));
     } catch (error) {
       next(error);
     }
@@ -674,8 +805,17 @@ export class AdminCustomersController {
       const { from, to, format = "json" } = req.query;
 
       // Sanitize from/to dates - ignore 'undefined', 'null', or empty strings
-      const safeFrom = (from && from !== "undefined" && from !== "null" && typeof from === "string" && from.trim() !== "") ? from.trim() : null;
-      const safeTo = (to && to !== "undefined" && to !== "null" && typeof to === "string" && to.trim() !== "") ? to.trim() : null;
+      const asBound = (value: unknown, endOfDay: boolean): string | null => {
+        if (!value || value === "undefined" || value === "null" || typeof value !== "string") return null;
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+          return endOfDay ? `${trimmed}T23:59:59.999Z` : `${trimmed}T00:00:00.000Z`;
+        }
+        return trimmed;
+      };
+      const safeFrom = asBound(from, false);
+      const safeTo = asBound(to, true);
 
       const { data, error } = await supabase.rpc("get_customer_statement", {
         p_identifier: identifier,

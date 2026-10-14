@@ -157,6 +157,18 @@ router.get(
 );
 
 /**
+ * GET /api/admin/customers/:customerCode/redemptions
+ * Query: { page?, limit? }
+ * Protected: Administrator role only.
+ */
+router.get(
+  "/customers/:customerCode/redemptions",
+  authMiddleware,
+  requireAdmin,
+  adminCustomersController.getCustomerRedemptions.bind(adminCustomersController)
+);
+
+/**
  * GET /api/admin/customers/:customerCode/find
  * Protected: Administrator role only.
  */
