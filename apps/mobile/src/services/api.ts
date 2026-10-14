@@ -553,6 +553,25 @@ export async function getCustomerPurchases(
   return response.data.data;
 }
 
+export async function getAdminCustomerRedemptions(
+  customerCode: string,
+  params?: { page?: number; limit?: number }
+): Promise<{
+  redemptions: any[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}> {
+  const response = await apiClient.get<{ success: boolean; data: any }>(
+    `/api/admin/customers/${encodeURIComponent(customerCode)}/redemptions`,
+    { params }
+  );
+  return response.data.data;
+}
+
 export async function getPurchases(params?: {
   customer?: string;
   start_date?: string;
@@ -804,7 +823,8 @@ export async function getMyPurchases(params?: {
 
 export async function getRecentActivity(): Promise<any[]> {
   const response = await apiClient.get<{ success: boolean; data: any }>("/api/customer/me/recent-activity");
-  return response.data.data || [];
+  const data = response.data.data;
+  return Array.isArray(data) ? data : [];
 }
 
 export async function getCustomerRedemptions(params?: {

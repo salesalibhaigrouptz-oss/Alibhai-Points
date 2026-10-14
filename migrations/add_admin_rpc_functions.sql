@@ -4,6 +4,7 @@
 -- Drop existing functions if they exist
 DROP FUNCTION IF EXISTS public.find_customer(text, uuid);
 DROP FUNCTION IF EXISTS public.get_recent_activity(uuid);
+DROP FUNCTION IF EXISTS public.get_recent_activity(uuid, integer);
 DROP FUNCTION IF EXISTS public.get_customer_statement(text, uuid, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS public.update_loyalty_tier(uuid, uuid, numeric, numeric);
 
@@ -78,9 +79,10 @@ BEGIN
 END;
 $$;
 
--- 2. get_recent_activity: Get recent activity for a customer
+-- 2. get_recent_activity: mixed purchases + redemptions, newest first
 CREATE OR REPLACE FUNCTION public.get_recent_activity(
-  p_customer_id uuid
+  p_customer_id uuid,
+  p_limit integer DEFAULT 5
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -88,49 +90,50 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_purchases jsonb;
-  v_redemptions jsonb;
+  v_limit integer := GREATEST(1, LEAST(COALESCE(p_limit, 5), 50));
+  v_items jsonb;
 BEGIN
-  -- Get recent purchases (top 10)
-  SELECT COALESCE(jsonb_agg(jsonb_build_object(
-    'id', id,
-    'transaction_reference', transaction_reference,
-    'purchase_amount', purchase_amount,
-    'points_earned', points_earned,
-    'status', status,
-    'purchased_at', purchased_at
-  )), '[]')
-  INTO v_purchases
-  FROM (
-    SELECT id, transaction_reference, purchase_amount, points_earned, status, purchased_at
+  WITH combined AS (
+    SELECT
+      purchased_at AS occurred_at,
+      jsonb_build_object(
+        'type', 'purchase',
+        'at', purchased_at,
+        'amount_tzs', purchase_amount,
+        'points', points_earned,
+        'reference', transaction_reference,
+        'status', status,
+        'value_tzs', NULL
+      ) AS item
     FROM public.purchases
-    WHERE customer_id = p_customer_id AND status = 'completed'
-    ORDER BY purchased_at DESC
-    LIMIT 10
-  ) sub;
+    WHERE customer_id = p_customer_id
 
-  -- Get recent redemptions (top 10)
-  SELECT COALESCE(jsonb_agg(jsonb_build_object(
-    'id', id,
-    'redemption_reference', redemption_reference,
-    'points_redeemed', points_redeemed,
-    'status', status,
-    'redeemed_at', redeemed_at
-  )), '[]')
-  INTO v_redemptions
-  FROM (
-    SELECT id, redemption_reference, points_redeemed, status, redeemed_at
+    UNION ALL
+
+    SELECT
+      redeemed_at AS occurred_at,
+      jsonb_build_object(
+        'type', 'redemption',
+        'at', redeemed_at,
+        'amount_tzs', NULL,
+        'points', points_redeemed,
+        'reference', redemption_reference,
+        'status', status,
+        'value_tzs', NULL
+      ) AS item
     FROM public.point_redemptions
     WHERE customer_id = p_customer_id
-    ORDER BY redeemed_at DESC
-    LIMIT 10
-  ) sub;
+  )
+  SELECT COALESCE(jsonb_agg(item ORDER BY occurred_at DESC), '[]'::jsonb)
+  INTO v_items
+  FROM (
+    SELECT occurred_at, item
+    FROM combined
+    ORDER BY occurred_at DESC
+    LIMIT v_limit
+  ) ranked;
 
-  RETURN jsonb_build_object(
-    'ok', true,
-    'purchases', v_purchases,
-    'redemptions', v_redemptions
-  );
+  RETURN COALESCE(v_items, '[]'::jsonb);
 END;
 $$;
 
@@ -214,7 +217,7 @@ BEGIN
     'value_tzs', value_tzs,
     'status', status,
     'note', note
-  ORDER BY date DESC)), '[]')
+  ) ORDER BY date DESC), '[]'::jsonb)
   INTO v_entries
   FROM all_entries;
 
@@ -354,6 +357,6 @@ $$;
 
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.find_customer(text, uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.get_recent_activity(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_recent_activity(uuid, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_customer_statement(text, uuid, timestamptz, timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.update_loyalty_tier(uuid, uuid, numeric, numeric) TO service_role;

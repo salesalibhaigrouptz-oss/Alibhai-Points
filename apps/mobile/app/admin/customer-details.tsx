@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import {
   View,
@@ -15,12 +15,13 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { useAuth } from "@/services/auth-context";
 import { apiErrorMessage, formatPoints, formatTzs, getApiBaseUrl, getStoredToken } from "@/services/api";
 import {
   useCustomer,
   useCustomerPurchases,
+  useAdminCustomerRedemptions,
   useCustomerStatement,
   useResetCustomerPin,
 } from "@/services/hooks";
@@ -37,8 +38,10 @@ export default function CustomerDetails() {
   const { t } = useTranslation();
 
   const { data: customer, isLoading, error, refetch } = useCustomer(id || '');
-  const { data: purchasesData } = useCustomerPurchases(id || '', { limit: 20 });
+  const { data: purchasesData, isError: purchasesError, error: purchasesLoadError } = useCustomerPurchases(id || '', { limit: 20 });
   const purchases = purchasesData?.purchases || [];
+  const { data: redemptionsData, isError: redemptionsError, error: redemptionsLoadError } = useAdminCustomerRedemptions(id || '', { limit: 20 });
+  const redemptions = redemptionsData?.redemptions || [];
 
   const [activeTab, setActiveTab] = useState<
     "overview" | "purchases" | "points" | "redemptions" | "statement"
@@ -76,7 +79,7 @@ export default function CustomerDetails() {
   };
 
   const { from, to } = getDateRange();
-  const { data: statementData, isLoading: loadingStatement } = useCustomerStatement(id || '', from, to, 'json');
+  const { data: statementData, isLoading: loadingStatement, isError: statementError, error: statementLoadError } = useCustomerStatement(id || '', from, to, 'json');
 
   const handleExportCSV = async () => {
     if (!id) return;
@@ -124,17 +127,17 @@ export default function CustomerDetails() {
         return;
       }
 
-      const baseDir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
-      const fileUri = `${(baseDir || '').replace(/\/+$/, '')}/statement_${id}_${Date.now()}.csv`;
-      await FileSystem.writeAsStringAsync(fileUri, csvText);
+      const file = new File(Paths.cache, `statement_${id}_${Date.now()}.csv`);
+      file.create({ overwrite: true });
+      file.write(csvText);
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
+        await Sharing.shareAsync(file.uri, {
           mimeType: 'text/csv',
           dialogTitle: t('admin.customerDetails.shareCsv'),
         });
       } else {
-        Alert.alert(t('common.done'), `CSV generated successfully at ${fileUri}`);
+        Alert.alert(t('common.done'), `CSV generated successfully at ${file.uri}`);
       }
     } catch (error) {
       Alert.alert(t('common.error'), apiErrorMessage(error));
@@ -325,27 +328,51 @@ export default function CustomerDetails() {
 
   const renderPurchases = () => (
     <View style={styles.content}>
-      {purchases.map((purchase) => (
-        <View key={purchase.id} style={styles.transactionCard}>
-          <View style={styles.transactionHeader}>
-            <Text style={styles.transactionId}>{purchase.transaction_reference}</Text>
-            <Text style={styles.transactionDate}>{formatDate(purchase.purchased_at)}</Text>
-          </View>
-          <Text style={styles.transactionAmount}>
-            TZS {purchase.purchase_amount.toLocaleString()}
-          </Text>
-          <Text style={styles.transactionPoints}>+{purchase.points_earned} {t('common.pts')}</Text>
-        </View>
-      ))}
-      {purchases.length === 0 && (
-        <Text style={styles.emptyText}>{t('admin.customerDetails.noPurchases')}</Text>
+      {purchasesError ? (
+        <Text style={styles.emptyText}>{apiErrorMessage(purchasesLoadError)}</Text>
+      ) : (
+        <>
+          {purchases.map((purchase) => (
+            <View key={purchase.id} style={styles.transactionCard}>
+              <View style={styles.transactionHeader}>
+                <Text style={styles.transactionId}>{purchase.transaction_reference}</Text>
+                <Text style={styles.transactionDate}>{formatDate(purchase.purchased_at)}</Text>
+              </View>
+              <Text style={styles.transactionAmount}>
+                TZS {Number(purchase.purchase_amount || 0).toLocaleString()}
+              </Text>
+              <Text style={styles.transactionPoints}>+{purchase.points_earned} {t('common.pts')}</Text>
+            </View>
+          ))}
+          {purchases.length === 0 && (
+            <Text style={styles.emptyText}>{t('admin.customerDetails.noPurchases')}</Text>
+          )}
+        </>
       )}
     </View>
   );
 
   const renderRedemptions = () => (
     <View style={styles.content}>
-      <Text style={styles.emptyText}>{t('admin.customerDetails.noRedemptions')}</Text>
+      {redemptionsError ? (
+        <Text style={styles.emptyText}>{apiErrorMessage(redemptionsLoadError)}</Text>
+      ) : (
+        <>
+          {redemptions.map((redemption: any) => (
+            <View key={redemption.id} style={styles.transactionCard}>
+              <View style={styles.transactionHeader}>
+                <Text style={styles.transactionId}>{redemption.redemption_reference}</Text>
+                <Text style={styles.transactionDate}>{formatDate(redemption.redeemed_at)}</Text>
+              </View>
+              <Text style={styles.transactionPoints}>-{redemption.points_redeemed} {t('common.pts')}</Text>
+              <Text style={styles.transactionAmount}>{redemption.status}</Text>
+            </View>
+          ))}
+          {redemptions.length === 0 && (
+            <Text style={styles.emptyText}>{t('admin.customerDetails.noRedemptions')}</Text>
+          )}
+        </>
+      )}
     </View>
   );
 
@@ -442,6 +469,8 @@ export default function CustomerDetails() {
 
         {loadingStatement ? (
           <ActivityIndicator size="large" color="#7A1F2B" style={styles.loadingIndicator} />
+        ) : statementError ? (
+          <Text style={styles.emptyText}>{apiErrorMessage(statementLoadError)}</Text>
         ) : Array.isArray(statementEntries) && statementEntries.length > 0 ? (
           <View>
             {statementEntries.map((entry: any, index: number) => {

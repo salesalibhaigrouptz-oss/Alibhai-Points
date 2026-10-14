@@ -11,6 +11,7 @@ import {
   updateTier,
   getCustomerStatement,
   getCustomerPurchases,
+  getAdminCustomerRedemptions,
   getPurchases,
   getRedemptions,
   getRedemption,
@@ -140,6 +141,15 @@ export const useCustomerPurchases = (customerCode: string, params?: { page?: num
   return useQuery({
     queryKey: ["admin", "customer", customerCode, "purchases", params],
     queryFn: () => getCustomerPurchases(customerCode, params),
+    enabled: !!customerCode,
+    staleTime: 30 * 1000,
+  });
+};
+
+export const useAdminCustomerRedemptions = (customerCode: string, params?: { page?: number; limit?: number }) => {
+  return useQuery({
+    queryKey: ["admin", "customer", customerCode, "redemptions", params],
+    queryFn: () => getAdminCustomerRedemptions(customerCode, params),
     enabled: !!customerCode,
     staleTime: 30 * 1000,
   });
