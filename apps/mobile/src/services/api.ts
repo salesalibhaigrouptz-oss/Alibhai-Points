@@ -328,11 +328,13 @@ export function formatPoints(value: number): string {
 }
 
 export function formatTzs(value: number): string {
-  return new Intl.NumberFormat("en-TZ", {
+  const formatted = new Intl.NumberFormat("en-TZ", {
     style: "currency",
     currency: "TZS",
     maximumFractionDigits: 0,
   }).format(value);
+  // Replace TZS with TSh for Tanzanian Shilling
+  return formatted.replace('TZS', 'TSh');
 }
 
 export function formatDate(value: string | null | undefined): string {

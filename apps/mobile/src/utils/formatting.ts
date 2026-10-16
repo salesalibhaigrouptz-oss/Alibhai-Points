@@ -5,11 +5,13 @@ export function useFormattedValues() {
   const locale = i18n.language === 'sw' ? 'sw-TZ' : 'en-TZ';
 
   const formatTzs = (value: number): string => {
-    return new Intl.NumberFormat(locale, {
+    const formatted = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'TZS',
       maximumFractionDigits: 0,
     }).format(value);
+    // Replace TZS with TSh for Tanzanian Shilling
+    return formatted.replace('TZS', 'TSh');
   };
 
   const formatDate = (value: string | null | undefined): string => {

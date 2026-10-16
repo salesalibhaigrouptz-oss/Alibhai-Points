@@ -297,7 +297,7 @@ export function HomeScreen() {
                   {t('home.pendingWaitingOffice')}
                 </Text>
                 <Text style={[styles.pendingDetail, { color: colors.mutedForeground }]}>
-                  {pendingRequest.points} points = TZS {formatTzs(pendingRequest.value_tzs)}
+                  {pendingRequest.points} points = {formatTzs(pendingRequest.value_tzs)}
                 </Text>
                 <Text style={[styles.pendingRef, { color: colors.mutedForeground }]}>
                   {t('home.pendingReference', { reference: pendingRequest.reference })}
@@ -316,7 +316,7 @@ export function HomeScreen() {
                   {formatPoints(redeemablePoints)}
                 </Text>
                 <Text style={[styles.pointsTzs, { color: colors.mutedForeground }]}>
-                  = TZS {formatTzs(redeemableValueTzs)}
+                  = {formatTzs(redeemableValueTzs)}
                 </Text>
               </View>
               <View style={[styles.pointsDivider, { backgroundColor: colors.border }]} />
@@ -328,7 +328,7 @@ export function HomeScreen() {
                   {formatPoints(waitingPoints)}
                 </Text>
                 <Text style={[styles.pointsTzsSmall, { color: colors.mutedForeground }]}>
-                  = TZS {formatTzs(waitingValueTzs)}
+                  = {formatTzs(waitingValueTzs)}
                 </Text>
               </View>
             </View>
@@ -341,7 +341,7 @@ export function HomeScreen() {
               </Text>
               <Text style={[styles.tierProgressSubtitle, { color: colors.mutedForeground }]}>
                 {t('home.spendMoreToReach', { amount: formatTzs(nextTierRemainingTzs || 0), tier: nextTier })}
-                {nextTierPointValueTzs ? ` (1 point = TZS ${nextTierPointValueTzs})` : ''}
+                {nextTierPointValueTzs ? ` (1 point = ${formatTzs(nextTierPointValueTzs)})` : ''}
               </Text>
             </Card>
           ) : (
@@ -482,14 +482,14 @@ export function PointsScreen() {
             <LabelValue
               label={t('points.redeemable')}
               value={`${formatPoints(redeemablePoints)} points`}
-              subvalue={`≈ TZS ${formatTzs(redeemableValueTzs)}`}
+              subvalue={`≈ ${formatTzs(redeemableValueTzs)}`}
               icon="check-circle"
             />
             <View style={[styles.separator, { backgroundColor: colors.border }]} />
             <LabelValue
               label={t('points.waiting')}
               value={`${formatPoints(waitingPoints)} points`}
-              subvalue={`≈ TZS ${formatTzs(waitingValueTzs)}`}
+              subvalue={`≈ ${formatTzs(waitingValueTzs)}`}
               icon="clock"
             />
             <View style={[styles.separator, { backgroundColor: colors.border }]} />
@@ -800,7 +800,7 @@ export function RedeemScreen() {
               {formatPoints(redeemablePoints)}
             </Text>
             <Text style={[styles.availableUnit, { color: colors.mutedForeground }]}>
-              points ≈ TZS {formatTzs(redeemableValueTzs)}
+              points ≈ {formatTzs(redeemableValueTzs)}
             </Text>
           </Card>
           {!eligible ? (
