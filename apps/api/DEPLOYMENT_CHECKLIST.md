@@ -14,11 +14,13 @@ Create a Vercel project from this repository with:
 | Function region | `cpt1` (Cape Town; selected as the nearest Vercel region for an East African Supabase deployment) |
 | Function max duration | 30 seconds |
 
-`src/index.ts` is the Vercel Express entry point and exports the app. Vercel's
-Express integration routes requests to that app, so no rewrite is needed.
-`src/server.ts` is only for local `app.listen()` development. The project region
-is set in `vercel.json`; if the Supabase project is hosted outside Africa,
-change `regions` there to the closest Vercel region to that actual project.
+Both `src/index.ts` and `src/app.ts` export the Express app as a default export.
+Vercel may detect `src/app.ts` as the Express entry point, so both entry files
+have the 30-second function limit configured. Vercel's Express integration
+routes requests to the app, so no rewrite is needed. `src/server.ts` is only
+for local `app.listen()` development. The project region is set in
+`vercel.json`; if the Supabase project is hosted outside Africa, change
+`regions` there to the closest Vercel region to that actual project.
 
 ## Environment Variables
 

@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["cpt1"],
   "functions": {
+    "src/app.ts": {
+      "maxDuration": 30
+    },
     "src/index.ts": {
       "maxDuration": 30
     }
