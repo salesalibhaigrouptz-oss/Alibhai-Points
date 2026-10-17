@@ -12,14 +12,16 @@ apps/legal-pages/
 │   └── site.css
 ├── delete-account/
 │   └── index.html
+├── index.html
 ├── privacy/
 │   └── index.html
 ├── vercel.json
 └── README.md
 ```
 
-The pages are served at `/privacy` and `/delete-account`. The language
-selector on each page switches the content without leaving the page.
+The landing page is served at `/`; the legal pages are served at `/privacy` and
+`/delete-account`. Each page's language selector switches the content without
+leaving the page.
 
 ## Before publishing
 
