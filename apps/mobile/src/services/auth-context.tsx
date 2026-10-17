@@ -17,24 +17,23 @@ import {
 
 export const ACCESS_TOKEN_KEY = "access_token";
 
-export type DemoRole = "customer" | "admin";
+export type AppRole = "customer" | "admin";
 export type AuthStatus = "signed-in" | "signed-out" | "restoring";
 
 type AuthContextValue = {
-  role: DemoRole | null;
+  role: AppRole | null;
   status: AuthStatus;
-  enterDemo: (role: DemoRole) => void;
   signOut: () => Promise<void>;
   pendingRegistrationToken: string | null;
   setPendingRegistrationToken: (token: string | null) => void;
-  signIn: (token: string, userRole?: DemoRole) => Promise<void>;
+  signIn: (token: string, userRole?: AppRole) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
-  const [role, setRole] = useState<DemoRole | null>(null);
+  const [role, setRole] = useState<AppRole | null>(null);
   const [status, setStatus] = useState<AuthStatus>("restoring");
   const [pendingRegistrationToken, setPendingRegistrationToken] = useState<
     string | null
@@ -103,7 +102,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [queryClient]);
 
   const signIn = useCallback(
-    async (token: string, userRole?: DemoRole) => {
+    async (token: string, userRole?: AppRole) => {
       await setStoredToken(token);
       setRole(userRole || "customer");
       setStatus("signed-in");
@@ -120,26 +119,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setPendingRegistrationToken(null);
   }, [queryClient]);
 
-  const enterDemo = useCallback(
-    (nextRole: DemoRole) => {
-      queryClient.clear();
-      setRole(nextRole);
-      setStatus("signed-in");
-    },
-    [queryClient]
-  );
-
   const value = useMemo(
     () => ({
       role,
       status,
-      enterDemo,
       signOut,
       pendingRegistrationToken,
       setPendingRegistrationToken,
       signIn,
     }),
-    [role, status, enterDemo, signOut, pendingRegistrationToken, signIn]
+    [role, status, signOut, pendingRegistrationToken, signIn]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

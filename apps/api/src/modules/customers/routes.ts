@@ -6,6 +6,8 @@ import { authMiddleware } from "../../middleware/auth.js";
 import { requireCustomer } from "../../middleware/requireCustomer.js";
 import { validateBody } from "../../middleware/validate.js";
 import { createRedemptionSchema } from "./redemptions.schema.js";
+import { redemptionLimiter } from "../../middleware/rateLimit.js";
+import { customerDeletionRequestsController, createDeletionRequestSchema } from "./deletion-requests.controller.js";
 
 const router = Router();
 
@@ -14,6 +16,20 @@ const router = Router();
  * Protected: Requires authenticated user with customer role.
  */
 router.get("/me", authMiddleware, requireCustomer, customerController.getCustomerMe.bind(customerController));
+
+router.get(
+  "/me/deletion-request",
+  authMiddleware,
+  requireCustomer,
+  customerDeletionRequestsController.getPendingRequest.bind(customerDeletionRequestsController)
+);
+router.post(
+  "/me/deletion-request",
+  authMiddleware,
+  requireCustomer,
+  validateBody(createDeletionRequestSchema),
+  customerDeletionRequestsController.createRequest.bind(customerDeletionRequestsController)
+);
 
 /**
  * GET /api/customer/me/points
@@ -35,6 +51,7 @@ router.get("/me/recent-activity", authMiddleware, requireCustomer, customerPurch
  */
 router.post(
   "/me/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireCustomer,
   validateBody(createRedemptionSchema),
@@ -47,6 +64,7 @@ router.post(
  */
 router.get(
   "/me/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireCustomer,
   customerRedemptionsController.listRedemptions.bind(customerRedemptionsController)
@@ -58,6 +76,7 @@ router.get(
 router.get("/points/summary", authMiddleware, requireCustomer, customerPurchasesController.getPointsSummary.bind(customerPurchasesController));
 router.post(
   "/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireCustomer,
   validateBody(createRedemptionSchema),
@@ -65,6 +84,7 @@ router.post(
 );
 router.get(
   "/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireCustomer,
   customerRedemptionsController.listRedemptions.bind(customerRedemptionsController)

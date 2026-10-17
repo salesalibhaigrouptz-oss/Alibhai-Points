@@ -13,4 +13,20 @@ describe("GET /api/health", () => {
     expect(res.body.data).toHaveProperty("service", "Alibhai Points API");
     expect(res.body.data).toHaveProperty("version", "2.0.0");
   });
+
+  it("allows requests without Origin and only reflects configured browser origins", async () => {
+    const noOrigin = await request(app).get("/api/health");
+    const allowedOrigin = await request(app)
+      .get("/api/health")
+      .set("Origin", "https://app.example.test");
+    const blockedOrigin = await request(app)
+      .get("/api/health")
+      .set("Origin", "https://untrusted.example");
+
+    expect(noOrigin.status).toBe(200);
+    expect(allowedOrigin.headers["access-control-allow-origin"]).toBe(
+      "https://app.example.test"
+    );
+    expect(blockedOrigin.headers["access-control-allow-origin"]).toBeUndefined();
+  });
 });

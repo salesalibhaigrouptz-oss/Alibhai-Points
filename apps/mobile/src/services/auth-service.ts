@@ -1,10 +1,11 @@
 import { apiLogin, apiSignup, setStoredToken } from "./api";
 import { sendWhatsAppOtp, verifyWhatsAppOtp } from "./supabase";
+import { mobileEnv } from "../config/env";
 
 export type AuthMode = "pin" | "whatsapp_otp";
 
 export const AUTH_MODE: AuthMode =
-  (process.env.EXPO_PUBLIC_AUTH_MODE as AuthMode) || "pin";
+  mobileEnv.EXPO_PUBLIC_AUTH_MODE;
 
 export interface AuthService {
   mode: AuthMode;

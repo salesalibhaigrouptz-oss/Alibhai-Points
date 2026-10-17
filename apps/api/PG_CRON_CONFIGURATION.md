@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Alibhai Points system uses `pg_cron` to automatically expire points for customers who haven't made a purchase within the inactivity period (default: 25 days).
+The Alibhai Points system uses Supabase `pg_cron` to automatically expire
+points for customers who haven't made a purchase within the inactivity period
+(default: 25 days). The API does not schedule or host this daily job.
 
 ## Expiry Job Details
 
@@ -33,11 +35,8 @@ select cron.schedule(
 );
 ```
 
-### Method 2: External Script (Alternative)
-
-The project includes a Node.js script at `apps/api/scripts/run-expiry.ts` that can be:
-- Run manually: `npm run expiry`
-- Scheduled with cron/systemd/Task Scheduler
+Do not schedule the API or its one-shot expiry command for this task. The daily
+schedule is owned by Supabase `pg_cron`.
 
 ## Verification
 

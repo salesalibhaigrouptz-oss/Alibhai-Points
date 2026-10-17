@@ -5,40 +5,11 @@ import { logger } from "../utils/logger.js";
 import { sendError } from "../utils/response.js";
 
 /**
- * Redact sensitive information from error messages and objects
- */
-function redactSensitiveData(data: any): any {
-  if (!data) return data;
-
-  const redacted = { ...data };
-
-  // Redact phone numbers (pattern: +255XXXXXXXXX)
-  if (typeof redacted.message === "string") {
-    redacted.message = redacted.message.replace(/\+255\d{9}/g, "+255XXXXXXX");
-  }
-
-  // Redact tokens (JWT-like strings)
-  if (typeof redacted.message === "string") {
-    redacted.message = redacted.message.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[REDACTED_TOKEN]");
-  }
-
-  // Redact any field named token, password, pin, secret
-  const sensitiveFields = ["token", "password", "pin", "secret", "apiKey", "authorization"];
-  Object.keys(redacted).forEach((key) => {
-    if (sensitiveFields.some((sf) => key.toLowerCase().includes(sf))) {
-      redacted[key] = "[REDACTED]";
-    }
-  });
-
-  return redacted;
-}
-
-/**
  * Central error handling middleware.
  * Maps application errors, Zod validation errors, and PostgreSQL database exceptions
  * to consistent HTTP responses: { success: false, error: { code, message, details? } }
  * Never leaks stack traces or database messages to clients.
- * Logs with request ID and redacts tokens and phone numbers.
+ * Logs only safe request metadata and fixed error codes.
  */
 export function errorHandler(
   err: unknown,
@@ -46,13 +17,14 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): Response {
+  const route = req.route?.path;
+
   // 1. Handled AppError instances
   if (err instanceof AppError) {
     if (err.statusCode >= 500) {
-      const redactedErr = redactSensitiveData(err);
       logger.error(
-        { err: redactedErr, reqId: req.id, path: req.originalUrl, method: req.method },
-        `[${req.id}] Server AppError: ${err.message}`
+        { errorCode: err.code, reqId: req.id, route, method: req.method },
+        "Server AppError"
       );
     }
     return sendError(res, err.statusCode, err.code, err.message, err.details);
@@ -63,8 +35,12 @@ export function errorHandler(
     const firstIssue = err.issues[0];
     const message = firstIssue?.message || "Validation failed";
     logger.warn(
-      { reqId: req.id, path: req.originalUrl, validationError: err.format() },
-      `[${req.id}] Validation error: ${message}`
+      {
+        reqId: req.id,
+        route,
+        issues: err.issues.map(({ code, path }) => ({ code, path })),
+      },
+      "Request validation failed"
     );
     return sendError(res, 400, "VALIDATION_ERROR", message, err.format());
   }
@@ -78,8 +54,8 @@ export function errorHandler(
     for (const [code, mapping] of Object.entries(DB_ERROR_MAP)) {
       if (message.includes(code)) {
         logger.warn(
-          { reqId: req.id, path: req.originalUrl, dbCode: code },
-          `[${req.id}] Database error: ${code}`
+          { reqId: req.id, route, dbCode: code },
+          "Database error"
         );
         return sendError(res, mapping.status, code, mapping.message);
       }
@@ -92,33 +68,23 @@ export function errorHandler(
     const mapped = mapDbCodeToHttp(err.message);
     if (DB_ERROR_MAP[err.message]) {
       logger.warn(
-        { reqId: req.id, path: req.originalUrl, dbCode: err.message },
-        `[${req.id}] Database error: ${err.message}`
+        { reqId: req.id, route, dbCode: err.message },
+        "Database error"
       );
       return sendError(res, mapped.status, err.message, mapped.message);
     }
 
-    // Log full error server-side but don't send stack trace to client
-    const redactedErr = redactSensitiveData({
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
-    });
-
     logger.error(
       {
-        err: redactedErr,
+        errorType: err.name,
         reqId: req.id,
-        path: req.originalUrl,
+        route,
         method: req.method,
       },
-      `[${req.id}] Unhandled error: ${err.message}`
+      "Unhandled request error"
     );
   } else {
-    logger.error(
-      { err: redactSensitiveData(err), reqId: req.id },
-      `[${req.id}] Unknown error thrown`
-    );
+    logger.error({ reqId: req.id, route }, "Unknown error thrown");
   }
 
   // 5. Fallback internal server error

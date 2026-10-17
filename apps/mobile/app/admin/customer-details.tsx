@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useAuth } from "@/services/auth-context";
-import { apiErrorMessage, formatPoints, formatTzs, getApiBaseUrl, getStoredToken } from "@/services/api";
+import { apiClient, apiErrorMessage, formatPoints, formatTzs } from "@/services/api";
 import {
   useCustomer,
   useCustomerPurchases,
@@ -86,34 +86,14 @@ export default function CustomerDetails() {
     if (!id) return;
     try {
       const { from: csvFrom, to: csvTo } = getDateRange();
-      const baseUrl = getApiBaseUrl();
-      const token = await getStoredToken();
-
-      const params = new URLSearchParams();
-      if (csvFrom && csvFrom !== "undefined" && csvFrom !== "null") params.append("from", csvFrom);
-      if (csvTo && csvTo !== "undefined" && csvTo !== "null") params.append("to", csvTo);
-      params.append("format", "csv");
-
-      const url = `${baseUrl}/api/admin/customers/${encodeURIComponent(id)}/statement?${params.toString()}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let message = 'Failed to export CSV';
-        try {
-          const parsed = JSON.parse(errorText);
-          message = parsed.error?.message || parsed.message || message;
-        } catch {
-          if (errorText) message = errorText;
+      const response = await apiClient.get<string>(
+        `/api/admin/customers/${encodeURIComponent(id)}/statement`,
+        {
+          params: { from: csvFrom, to: csvTo, format: "csv" },
+          responseType: "text",
         }
-        throw new Error(message);
-      }
-
-      const csvText = await response.text();
+      );
+      const csvText = response.data;
 
       if (Platform.OS === 'web') {
         const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });

@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
+  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -33,17 +35,19 @@ import {
   formatDate,
   formatPoints,
   formatTzs,
-  type UserProfile,
 } from "@/services/api";
 import { useErrorTranslation } from "@/services/error-translations";
 import { useFormattedValues } from "@/utils/formatting";
 import { LanguageToggle } from "@/components/language-toggle";
+import Constants from "expo-constants";
+import { mobileEnv } from "@/config/env";
 import {
   useCustomerPointsSummary,
   useCreateCustomerRedemption,
   useMyRedemptions,
   useMe,
   useRecentActivity,
+  useMyAccountDeletionRequest,
 } from "@/services/hooks";
 
 type CustomerRedemption = {
@@ -83,35 +87,6 @@ type PointsSummary = {
 
 const getGetCustomerDashboardQueryKey = () => ["customer", "points-summary"];
 const getListCustomerRedemptionsQueryKey = () => ["customer", "redemptions"];
-
-function fallbackSummary(me?: UserProfile): PointsSummary {
-  return {
-    customer_code: me?.customer?.customer_code || "—",
-    status: me?.customer?.status || "active",
-    total_points: Number(me?.customer?.points_balance ?? 0),
-    redeemable_points: 0,
-    waiting_points: 0,
-    requested_points: 0,
-    redeemed_points: 0,
-    expired_points: 0,
-    redeemable_value_tzs: 0,
-    waiting_value_tzs: 0,
-    point_value_tzs: 100,
-    tier: "Bronze",
-    lifetime_purchases: 0,
-    next_tier: "Silver",
-    next_tier_remaining_tzs: 10000000,
-    next_tier_point_value_tzs: 120,
-    pending_request: null,
-    next_unlock_at: null,
-    activity_deadline: null,
-    days_left: null,
-  };
-}
-
-
-
-
 
 const useCreateRedemption = () => {
   const mutation = useCreateCustomerRedemption();
@@ -232,26 +207,27 @@ function RecordCard({
 export function HomeScreen() {
   const colors = useColors();
   const { t } = useTranslation();
+  const { translateError } = useErrorTranslation();
   const { data: me } = useMe();
   const summaryQuery = useCustomerPointsSummary();
   const recentActivityQuery = useRecentActivity();
-  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
+  const summary = summaryQuery.data;
   const recentActivity = recentActivityQuery.data || [];
   const fullName = me?.profile?.full_name || "Customer";
-  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
-  const status = summary.status || me?.customer?.status || "active";
-  const tier = summary.tier || "Bronze";
-  const pointValueTzs = summary.point_value_tzs || 100;
-  const redeemablePoints = Number(summary.redeemable_points) || 0;
-  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
-  const waitingPoints = Number(summary.waiting_points) || 0;
-  const waitingValueTzs = Number(summary.waiting_value_tzs) || 0;
-  const nextTier = summary.next_tier;
-  const nextTierRemainingTzs = summary.next_tier_remaining_tzs;
-  const nextTierPointValueTzs = summary.next_tier_point_value_tzs;
-  const pendingRequest = summary.pending_request;
-  const activityDeadline = summary.activity_deadline;
-  const daysLeft = summary.days_left;
+  const customerId = summary?.customer_code || me?.customer?.customer_code || "—";
+  const status = summary?.status || me?.customer?.status;
+  const tier = summary?.tier;
+  const pointValueTzs = summary?.point_value_tzs;
+  const redeemablePoints = Number(summary?.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary?.redeemable_value_tzs) || 0;
+  const waitingPoints = Number(summary?.waiting_points) || 0;
+  const waitingValueTzs = Number(summary?.waiting_value_tzs) || 0;
+  const nextTier = summary?.next_tier;
+  const nextTierRemainingTzs = summary?.next_tier_remaining_tzs;
+  const nextTierPointValueTzs = summary?.next_tier_point_value_tzs;
+  const pendingRequest = summary?.pending_request;
+  const activityDeadline = summary?.activity_deadline;
+  const daysLeft = summary?.days_left;
 
   return (
     <Page withTabs>
@@ -259,7 +235,7 @@ export function HomeScreen() {
       {summaryQuery.isPending ? <LoadingState /> : null}
       {summaryQuery.isError ? (
         <ErrorState
-          message={apiErrorMessage(summaryQuery.error)}
+          message={translateError(apiErrorMessage(summaryQuery.error))}
           onRetry={() => void summaryQuery.refetch()}
         />
       ) : null}
@@ -274,17 +250,21 @@ export function HomeScreen() {
                 <Text style={[styles.customerId, { color: colors.mutedForeground }]}>
                   {t('home.customerId')} · {customerId}
                 </Text>
-                <View style={[styles.tierBadge, { backgroundColor: colors.accent }]}>
-                  <Text style={[styles.tierBadgeText, { color: colors.primary }]}>
-                    {tier}
-                  </Text>
-                </View>
+                {tier ? (
+                  <View style={[styles.tierBadge, { backgroundColor: colors.accent }]}>
+                    <Text style={[styles.tierBadgeText, { color: colors.primary }]}>
+                      {tier}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-              <Text style={[styles.pointValueText, { color: colors.mutedForeground }]}>
-                {t('home.pointValue', { value: pointValueTzs })}
-              </Text>
+              {pointValueTzs !== undefined ? (
+                <Text style={[styles.pointValueText, { color: colors.mutedForeground }]}>
+                  {t('home.pointValue', { value: pointValueTzs })}
+                </Text>
+              ) : null}
             </View>
-            <StatusPill active={status === "active"} />
+            {status ? <StatusPill active={status === "active"} /> : null}
           </View>
 
           {pendingRequest ? (
@@ -425,21 +405,22 @@ export function HomeScreen() {
 export function PointsScreen() {
   const colors = useColors();
   const { t } = useTranslation();
+  const { translateError } = useErrorTranslation();
   const { data: me } = useMe();
   const query = useCustomerPointsSummary();
-  const summary = query.data ?? fallbackSummary(me || undefined);
-  const tier = summary.tier || "Bronze";
-  const pointValueTzs = summary.point_value_tzs || 100;
-  const totalPoints = Number(summary.total_points) || 0;
-  const redeemablePoints = Number(summary.redeemable_points) || 0;
-  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
-  const waitingPoints = Number(summary.waiting_points) || 0;
-  const waitingValueTzs = Number(summary.waiting_value_tzs) || 0;
-  const requestedPoints = Number(summary.requested_points) || 0;
-  const redeemedPoints = Number(summary.redeemed_points) || 0;
-  const expiredPoints = Number(summary.expired_points) || 0;
-  const nextUnlockAt = summary.next_unlock_at;
-  const status = summary.status || me?.customer?.status || "active";
+  const summary = query.data;
+  const tier = summary?.tier;
+  const pointValueTzs = summary?.point_value_tzs;
+  const totalPoints = Number(summary?.total_points) || 0;
+  const redeemablePoints = Number(summary?.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary?.redeemable_value_tzs) || 0;
+  const waitingPoints = Number(summary?.waiting_points) || 0;
+  const waitingValueTzs = Number(summary?.waiting_value_tzs) || 0;
+  const requestedPoints = Number(summary?.requested_points) || 0;
+  const redeemedPoints = Number(summary?.redeemed_points) || 0;
+  const expiredPoints = Number(summary?.expired_points) || 0;
+  const nextUnlockAt = summary?.next_unlock_at;
+  const status = summary?.status || me?.customer?.status;
 
   return (
     <Page withTabs>
@@ -450,14 +431,14 @@ export function PointsScreen() {
       {query.isPending ? <LoadingState /> : null}
       {query.isError ? (
         <ErrorState
-          message={apiErrorMessage(query.error)}
+          message={translateError(apiErrorMessage(query.error))}
           onRetry={() => void query.refetch()}
         />
       ) : null}
       {!query.isPending && !query.isError ? (
         <>
           {status === "inactive" ? (
-            <InactiveNotice expired={(Number(summary.expired_points) || 0) > 0} />
+            <InactiveNotice expired={expiredPoints > 0} />
           ) : null}
           <Card style={styles.tierInfoCard}>
             <View style={[styles.tierInfoIcon, { backgroundColor: colors.accent }]}>
@@ -465,10 +446,12 @@ export function PointsScreen() {
             </View>
             <View style={styles.tierInfoContent}>
               <Text style={[styles.tierInfoTitle, { color: colors.foreground }]}>
-                {t('home.tier')}: {tier}
+                {t('home.tier')}: {tier || "—"}
               </Text>
               <Text style={[styles.tierInfoText, { color: colors.mutedForeground }]}>
-                {t('home.pointValue', { value: pointValueTzs })}
+                {pointValueTzs !== undefined
+                  ? t('home.pointValue', { value: pointValueTzs })
+                  : "—"}
               </Text>
             </View>
           </Card>
@@ -653,13 +636,22 @@ export function ProfileScreen() {
   const { data: me, isPending } = useMe();
   const summaryQuery = useCustomerPointsSummary();
   const { signOut } = useAuth();
-  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
+  const { translateError } = useErrorTranslation();
+  const deletionRequestQuery = useMyAccountDeletionRequest();
+  const summary = summaryQuery.data;
   const fullName = me?.profile?.full_name || "Customer";
   const phoneNumber = me?.profile?.phone || "—";
-  const customerId = summary.customer_code || me?.customer?.customer_code || "—";
+  const customerId = summary?.customer_code || me?.customer?.customer_code || "—";
   const city = me?.customer?.city || "—";
-  const status = summary.status || me?.customer?.status || "active";
-  const unusedPointsExpired = (Number(summary.expired_points) || 0) > 0;
+  const status = summary?.status || me?.customer?.status;
+  const unusedPointsExpired = (Number(summary?.expired_points) || 0) > 0;
+  const privacyPolicyUrl = mobileEnv.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+  const accountDeletionUrl = mobileEnv.EXPO_PUBLIC_ACCOUNT_DELETION_URL;
+  const openExternalLink = (url: string) => {
+    void Linking.openURL(url).catch(() => {
+      Alert.alert(t("common.error"), t("profile.linkError"));
+    });
+  };
 
   return (
     <Page withTabs>
@@ -676,7 +668,7 @@ export function ProfileScreen() {
         <Text style={[styles.profileName, { color: colors.foreground }]}>
           {fullName}
         </Text>
-        <StatusPill active={status === "active"} />
+        {status ? <StatusPill active={status === "active"} /> : null}
       </Card>
       <Card style={styles.profileDetails}>
         <LabelValue label={t('profile.phone')} value={phoneNumber} icon="phone" />
@@ -687,11 +679,55 @@ export function ProfileScreen() {
         <View style={[styles.separator, { backgroundColor: colors.border }]} />
         <LabelValue
           label={t('profile.status')}
-          value={status === "active" ? t('home.statusActive') : t('home.statusInactive')}
+          value={
+            status
+              ? status === "active"
+                ? t('home.statusActive')
+                : t('home.statusInactive')
+              : "—"
+          }
           icon="shield"
+        />
+        <View style={[styles.separator, { backgroundColor: colors.border }]} />
+        <LabelValue
+          label={t('profile.version')}
+          value={Constants.expoConfig?.version || "1.0.0"}
+          icon="info"
         />
       </Card>
       <LanguageToggle />
+      <Card>
+        {deletionRequestQuery.isPending ? (
+          <LoadingState label={t("common.loading")} />
+        ) : deletionRequestQuery.isError ? (
+          <ErrorState
+            message={translateError(apiErrorMessage(deletionRequestQuery.error))}
+            onRetry={() => void deletionRequestQuery.refetch()}
+          />
+        ) : deletionRequestQuery.data?.request ? (
+          <Text style={{ color: colors.foreground }}>
+            {t("deletion.pendingStatus")}
+          </Text>
+        ) : (
+          <PrimaryButton
+            label={t("deletion.request")}
+            onPress={() => router.push("/deletion-request")}
+            secondary
+          />
+        )}
+        {privacyPolicyUrl ? (
+          <TextButton
+            label={t("profile.privacyPolicy")}
+            onPress={() => openExternalLink(privacyPolicyUrl)}
+          />
+        ) : null}
+        {accountDeletionUrl ? (
+          <TextButton
+            label={t("deletion.learnMore")}
+            onPress={() => openExternalLink(accountDeletionUrl)}
+          />
+        ) : null}
+      </Card>
       {status === "inactive" ? (
         <InactiveNotice expired={unusedPointsExpired} />
       ) : null}
@@ -715,9 +751,10 @@ type RedemptionValues = z.infer<typeof redemptionSchema>;
 export function RedeemScreen() {
   const colors = useColors();
   const { t } = useTranslation();
+  const { translateError } = useErrorTranslation();
   const { data: me } = useMe();
   const summaryQuery = useCustomerPointsSummary();
-  const summary = summaryQuery.data ?? fallbackSummary(me || undefined);
+  const summary = summaryQuery.data;
   const redeem = useCreateRedemption();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -732,10 +769,10 @@ export function RedeemScreen() {
     });
 
   const pointsValue = watch("points");
-  const pointValueTzs = summary.point_value_tzs || 100;
-  const redeemablePoints = Number(summary.redeemable_points) || 0;
-  const redeemableValueTzs = Number(summary.redeemable_value_tzs) || 0;
-  const status = summary.status || me?.customer?.status || "active";
+  const pointValueTzs = summary?.point_value_tzs;
+  const redeemablePoints = Number(summary?.redeemable_points) || 0;
+  const redeemableValueTzs = Number(summary?.redeemable_value_tzs) || 0;
+  const status = summary?.status || me?.customer?.status;
 
   const openConfirmation = handleSubmit(({ points }) => {
     const amount = Number(points);
@@ -772,7 +809,10 @@ export function RedeemScreen() {
     }
   };
 
-  const eligible = status === "active" && redeemablePoints > 0;
+  const eligible =
+    status === "active" &&
+    redeemablePoints > 0 &&
+    pointValueTzs !== undefined;
 
   return (
     <Page>
@@ -783,14 +823,14 @@ export function RedeemScreen() {
       {summaryQuery.isPending ? <LoadingState label={t('common.loading')} /> : null}
       {summaryQuery.isError ? (
         <ErrorState
-          message={apiErrorMessage(summaryQuery.error)}
+          message={translateError(apiErrorMessage(summaryQuery.error))}
           onRetry={() => void summaryQuery.refetch()}
         />
       ) : null}
       {!summaryQuery.isPending && !summaryQuery.isError ? (
         <>
           {status === "inactive" ? (
-            <InactiveNotice expired={(Number(summary.expired_points) || 0) > 0} />
+            <InactiveNotice expired={(Number(summary?.expired_points) || 0) > 0} />
           ) : null}
           <Card style={styles.availableCard}>
             <Text style={[styles.availableLabel, { color: colors.mutedForeground }]}>
@@ -832,7 +872,9 @@ export function RedeemScreen() {
               />
             )}
           />
-          {pointsValue && /^\d+$/.test(pointsValue) ? (
+          {pointValueTzs !== undefined &&
+          pointsValue &&
+          /^\d+$/.test(pointsValue) ? (
             <Text style={[styles.serverCheckNote, { color: colors.mutedForeground }]}>
               {t('redeem.approximateValue', { value: formatTzs(Number(pointsValue) * pointValueTzs) })}
             </Text>
@@ -868,7 +910,14 @@ export function RedeemScreen() {
               {t('redeem.confirmTitle', { points: requestedPoints === null ? '' : formatPoints(requestedPoints) })}
             </Text>
             <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
-              {t('redeem.confirmMessage', { points: requestedPoints === null ? '' : formatPoints(requestedPoints), value: requestedPoints ? formatTzs(requestedPoints * pointValueTzs) : '0' })}
+              {t('redeem.confirmMessage', {
+                points:
+                  requestedPoints === null ? '' : formatPoints(requestedPoints),
+                value:
+                  requestedPoints && pointValueTzs !== undefined
+                    ? formatTzs(requestedPoints * pointValueTzs)
+                    : "—",
+              })}
             </Text>
             <PrimaryButton
               label={redeem.isPending ? t('common.loading') : t('common.confirm')}

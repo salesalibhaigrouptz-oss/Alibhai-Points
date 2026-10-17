@@ -1,10 +1,13 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
 import { router } from "expo-router";
 import { supabase } from "./supabase";
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { mobileEnv } from "../config/env";
+import { appStorage } from "./storage";
 
 export const ACCESS_TOKEN_KEY = "access_token";
+type RetryableRequest = InternalAxiosRequestConfig & {
+  __retriedGet?: boolean;
+};
 
 let onUnauthorizedCallback: (() => void) | null = null;
 let inMemoryToken: string | null = null;
@@ -15,30 +18,22 @@ export function setOnUnauthorizedCallback(cb: (() => void) | null): void {
 
 export async function setStoredToken(token: string | null): Promise<void> {
   inMemoryToken = token;
-  try {
-    if (token) {
-      await AsyncStorage.setItem(ACCESS_TOKEN_KEY, token);
-    } else {
-      await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
-    }
-  } catch {}
+  if (token) {
+    await appStorage.setItem(ACCESS_TOKEN_KEY, token);
+  } else {
+    await appStorage.removeItem(ACCESS_TOKEN_KEY);
+  }
 }
 
 export async function getStoredToken(): Promise<string | null> {
   if (inMemoryToken) return inMemoryToken;
-  try {
-    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
-    inMemoryToken = token;
-    return token;
-  } catch {
-    return null;
-  }
+  const token = await appStorage.getItem(ACCESS_TOKEN_KEY);
+  inMemoryToken = token;
+  return token;
 }
 
 export function getApiBaseUrl(): string {
-  return (
-    process.env.EXPO_PUBLIC_API_URL?.trim() || "http://localhost:5000"
-  ).replace(/\/+$/, "");
+  return mobileEnv.EXPO_PUBLIC_API_URL.replace(/\/+$/, "");
 }
 
 /**
@@ -72,6 +67,8 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const status = error?.response?.status as number | undefined;
+
     if (error?.response?.status === 401) {
       await setStoredToken(null);
       if (onUnauthorizedCallback) {
@@ -83,6 +80,18 @@ apiClient.interceptors.response.use(
         router.replace("/(auth)/login" as any);
       } catch {}
     }
+
+    const config = error?.config as RetryableRequest | undefined;
+    if (
+      status !== 401 &&
+      config?.method?.toLowerCase() === "get" &&
+      !config.__retriedGet &&
+      (status === undefined || status >= 500)
+    ) {
+      config.__retriedGet = true;
+      return apiClient.request(config);
+    }
+
     return Promise.reject(error);
   }
 );
@@ -127,6 +136,18 @@ export function configureApiClient(): void {
 
 export function apiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+      return "Muda umeisha. Jaribu tena. / The request timed out. Please try again.";
+    }
+
+    const status = error.response?.status;
+    if (status !== undefined && status >= 500) {
+      return "Huduma haipatikani kwa sasa. Jaribu tena baadaye. / The service is unavailable right now. Please try again later.";
+    }
+    if (!error.response) {
+      return "Hakuna muunganisho wa intaneti. Angalia mtandao wako ujaribu tena. / No internet connection. Check your network and try again.";
+    }
+
     const data = error.response?.data;
     const errorCode = data?.error?.code;
 
@@ -146,7 +167,6 @@ export function apiErrorMessage(error: unknown): string {
       }
     }
 
-    const status = error.response?.status;
     if (status === 401) {
       return "INVALID_TOKEN";
     }
@@ -166,7 +186,10 @@ export function apiErrorMessage(error: unknown): string {
 
   const message = error instanceof Error ? error.message : "";
   if (/network error|failed to fetch|network request failed/i.test(message)) {
-    return "NETWORK_ERROR";
+    return "Hakuna muunganisho wa intaneti. Angalia mtandao wako ujaribu tena. / No internet connection. Check your network and try again.";
+  }
+  if (/timeout|timed out/i.test(message)) {
+    return "Muda umeisha. Jaribu tena. / The request timed out. Please try again.";
   }
 
   return message || "GENERIC_ERROR";
@@ -849,5 +872,60 @@ export async function getCustomerRedemptions(params?: {
     "/api/customer/me/redemptions",
     { params }
   );
+  return response.data.data;
+}
+
+export type AccountDeletionRequest = {
+  id: string;
+  reason: string | null;
+  status: "pending" | "done" | "rejected";
+  created_at: string;
+  handled_by?: string | null;
+  handled_at?: string | null;
+  customer_id?: string;
+  customer_code?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_city?: string | null;
+  requested_at?: string;
+};
+
+export async function getMyAccountDeletionRequest(): Promise<{
+  request: AccountDeletionRequest | null;
+}> {
+  const response = await apiClient.get<{ success: boolean; data: { request: AccountDeletionRequest | null } }>(
+    "/api/customer/me/deletion-request"
+  );
+  return response.data.data;
+}
+
+export async function createMyAccountDeletionRequest(
+  reason?: string
+): Promise<{ request: AccountDeletionRequest }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: { request: AccountDeletionRequest };
+  }>("/api/customer/me/deletion-request", { reason });
+  return response.data.data;
+}
+
+export async function getAdminAccountDeletionRequests(status?: string): Promise<{
+  requests: AccountDeletionRequest[];
+}> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: { requests: AccountDeletionRequest[] };
+  }>("/api/admin/deletion-requests", { params: status ? { status } : {} });
+  return response.data.data;
+}
+
+export async function reviewAccountDeletionRequest(
+  id: string,
+  action: "done" | "reject"
+): Promise<{ request: AccountDeletionRequest }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: { request: AccountDeletionRequest };
+  }>(`/api/admin/deletion-requests/${encodeURIComponent(id)}/${action}`, {});
   return response.data.data;
 }

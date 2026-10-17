@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { appStorage } from '@/services/storage';
 import sw from './sw.json';
 import en from './en.json';
 
@@ -15,7 +15,7 @@ const resources = {
 };
 
 const initI18n = async () => {
-  const savedLanguage = await AsyncStorage.getItem(LANGUAGE_KEY);
+  const savedLanguage = await appStorage.getItem(LANGUAGE_KEY);
   const language = savedLanguage || LANGUAGE_SW;
 
   await i18n.use(initReactI18next).init({
@@ -29,7 +29,7 @@ const initI18n = async () => {
 };
 
 export const saveLanguage = async (language: string) => {
-  await AsyncStorage.setItem(LANGUAGE_KEY, language);
+  await appStorage.setItem(LANGUAGE_KEY, language);
   await i18n.changeLanguage(language);
 };
 

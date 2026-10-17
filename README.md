@@ -8,7 +8,7 @@ A React Native mobile application built with Expo.
 alibhai-points/
 ├── apps/
 │   ├── mobile/          # React Native frontend app
-│   └── api/             # Backend API (placeholder)
+│   └── api/             # TypeScript + Express API
 └── package.json
 ```
 
@@ -53,6 +53,16 @@ npm run mobile:web
 - TypeScript
 - TanStack Query
 - React Hook Form
+
+## Backend API
+
+The Express API is in `apps/api`. Run it locally with `npm run api:dev`, build
+with `npm run api:build`, and run its tests with `npm run api:test`.
+
+For Vercel project settings, required environment variables, and production
+smoke-test commands, see [apps/api/DEPLOYMENT_CHECKLIST.md](./apps/api/DEPLOYMENT_CHECKLIST.md).
+The daily expiry job is scheduled by Supabase `pg_cron`; see
+[apps/api/PG_CRON_CONFIGURATION.md](./apps/api/PG_CRON_CONFIGURATION.md).
 
 ## License
 

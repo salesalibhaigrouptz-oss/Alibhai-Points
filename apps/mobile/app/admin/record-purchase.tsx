@@ -16,6 +16,7 @@ export default function RecordPurchase() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [customer, setCustomer] = useState<any>(null);
   const [preview, setPreview] = useState<any>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successData, setSuccessData] = useState<any>(null);
@@ -33,6 +34,7 @@ export default function RecordPurchase() {
         setDebouncedQuery('');
         setCustomer(null);
         setPreview(null);
+        setPreviewError(null);
       }
     }, 400);
     return () => clearTimeout(timer);
@@ -43,14 +45,17 @@ export default function RecordPurchase() {
     if (lookupResult) {
       setCustomer(lookupResult);
       setPreview(null);
+      setPreviewError(null);
     } else if (debouncedQuery && !lookupLoading) {
       setCustomer(null);
       setPreview(null);
+      setPreviewError(null);
     }
   }, [lookupResult, debouncedQuery, lookupLoading]);
 
   const handleAmountChange = async (value: string) => {
     setAmount(value);
+    setPreviewError(null);
     const numAmount = parseFloat(value) || 0;
     if (numAmount > 0 && customer) {
       try {
@@ -70,8 +75,8 @@ export default function RecordPurchase() {
         });
         setPreview(previewResult);
       } catch (error) {
-        console.error('Failed to preview purchase:', error);
         setPreview(null);
+        setPreviewError(apiErrorMessage(error));
       }
     } else {
       setPreview(null);
@@ -226,6 +231,10 @@ export default function RecordPurchase() {
             editable={!!customer}
           />
         </View>
+
+        {previewError ? (
+          <Text style={styles.notFoundText}>{previewError}</Text>
+        ) : null}
 
         {preview && (
           <View style={styles.previewCard}>

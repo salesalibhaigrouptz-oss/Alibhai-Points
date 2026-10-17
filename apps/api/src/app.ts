@@ -12,6 +12,7 @@ import { AppError } from "./utils/errors.js";
 
 export function createApp(): Express {
   const app = express();
+  app.set("trust proxy", 1);
 
   // Security Headers
   app.use(helmet({
@@ -31,14 +32,15 @@ export function createApp(): Express {
   }));
 
   // CORS Configuration
-  const corsOrigins =
-    env.CORS_ORIGINS === "*"
-      ? "*"
-      : env.CORS_ORIGINS.split(",").map((origin) => origin.trim());
+  const corsOrigins = env.CORS_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   app.use(
     cors({
-      origin: corsOrigins,
+      origin: (origin, callback) => {
+        callback(null, !origin || corsOrigins.includes(origin));
+      },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
@@ -67,11 +69,13 @@ export function createApp(): Express {
         serializers: {
           req: (req) => ({
             method: req.method,
-            url: req.url,
             id: req.id,
           }),
           res: (res) => ({
             statusCode: res.statusCode,
+          }),
+          err: (err) => ({
+            type: err.name,
           }),
         },
       })

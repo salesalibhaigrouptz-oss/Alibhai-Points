@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
+import { logger } from "../../utils/logger.js";
 import type { ResetPinInput } from "./schema.js";
 
 export class AdminController {
@@ -90,8 +91,7 @@ export class AdminController {
       });
 
       if (auditError) {
-        // Non-fatal: log the failure server-side but don't roll back the reset
-        console.error("[AdminController.resetPin] Audit log insert failed:", auditError.message);
+        logger.warn("PIN reset audit log insert failed");
       }
 
       sendSuccess(res, {

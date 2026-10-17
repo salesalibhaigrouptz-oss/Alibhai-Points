@@ -1,45 +1,34 @@
+import { type Server } from "node:http";
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./utils/logger.js";
-import { supabase } from "./config/supabase.js";
 
-const server = app.listen(env.PORT, () => {
-  logger.info(`🚀 Alibhai Points API running on port ${env.PORT} in ${env.NODE_ENV} mode`);
-  logger.info(`Health check available at http://localhost:${env.PORT}/api/health`);
+const server: Server = app.listen(env.PORT, () => {
+  logger.info({ port: env.PORT, environment: env.NODE_ENV }, "Alibhai Points API listening");
 });
 
-// Graceful shutdown handling
-const shutdown = (signal: string) => {
-  logger.info(`${signal} received: closing HTTP server gracefully...`);
-  
-  // Stop accepting new connections
-  server.close((err) => {
-    if (err) {
-      logger.error(`Error closing server: ${err.message}`);
-      process.exit(1);
+function shutdown(signal: string): void {
+  logger.info({ signal }, "Closing local API server");
+  server.close((error) => {
+    if (error) {
+      logger.error({ errorType: error.name }, "Failed to close local API server");
+      process.exitCode = 1;
+      return;
     }
-    logger.info("HTTP server closed successfully.");
-    process.exit(0);
+    logger.info("Local API server closed");
   });
+}
 
-  // Force shutdown after 10 seconds if graceful shutdown fails
-  setTimeout(() => {
-    logger.warn("Forced shutdown after timeout");
-    process.exit(1);
-  }, 10000);
-};
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-// Handle uncaught exceptions
-process.on("uncaughtException", (err) => {
-  logger.error({ err }, "Uncaught exception - shutting down");
-  shutdown("UNCAUGHT_EXCEPTION");
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("uncaughtException", (error) => {
+  logger.fatal({ errorType: error.name }, "Uncaught exception");
+  process.exit(1);
 });
-
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error({ reason, promise }, "Unhandled promise rejection - shutting down");
-  shutdown("UNHANDLED_REJECTION");
+process.once("unhandledRejection", (reason: unknown) => {
+  logger.fatal(
+    { errorType: reason instanceof Error ? reason.name : typeof reason },
+    "Unhandled promise rejection"
+  );
+  process.exit(1);
 });

@@ -6,6 +6,7 @@ import { completeRegistrationSchema, signupSchema, loginSchema } from "./schema.
 import { authLimiter } from "../../middleware/rateLimit.js";
 
 const router = Router();
+router.use(authLimiter);
 
 /**
  * POST /api/auth/login
@@ -13,7 +14,6 @@ const router = Router();
  */
 router.post(
   "/login",
-  authLimiter,
   validateBody(loginSchema),
   authController.login.bind(authController)
 );
@@ -24,7 +24,6 @@ router.post(
  */
 router.post(
   "/signup",
-  authLimiter,
   validateBody(signupSchema),
   authController.signup.bind(authController)
 );
@@ -36,7 +35,6 @@ router.post(
  */
 router.post(
   "/complete-registration",
-  authLimiter,
   authMiddleware,
   validateBody(completeRegistrationSchema),
   authController.completeRegistration.bind(authController)

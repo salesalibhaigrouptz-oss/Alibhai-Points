@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform, StyleSheet, View } from 'react-native';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { IosInstallBanner } from '@/components/ios-install-banner';
 import { AuthProvider } from '@/services/auth-context';
 import { configureApiClient } from '@/services/api';
 import { useColors } from '@/hooks/useColors';
@@ -48,6 +50,10 @@ function RootLayoutNav() {
           contentStyle: { backgroundColor: colors.background },
         }}
       />
+      <Stack.Screen
+        name="deletion-request"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
       <Stack.Screen name="admin" options={{ headerShown: false }} />
     </Stack>
   );
@@ -60,6 +66,7 @@ function AppProviders() {
       <KeyboardProvider>
         <AuthProvider>
           <RootLayoutNav />
+          <IosInstallBanner />
         </AuthProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
@@ -76,6 +83,18 @@ export default function RootLayout() {
   const [i18nInitialized, setI18nInitialized] = useState(false);
 
   useEffect(() => {
+    if (
+      Platform.OS === 'web' &&
+      typeof navigator !== 'undefined' &&
+      'serviceWorker' in navigator
+    ) {
+      void navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+        console.error('Service worker registration failed', error);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     initI18n().then(() => setI18nInitialized(true));
   }, []);
 
@@ -90,11 +109,40 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-            <AppProviders />
-        </QueryClientProvider>
-      </ErrorBoundary>
+      <View
+        style={Platform.OS === 'web' ? styles.webShell : styles.nativeShell}
+      >
+        <View
+          style={Platform.OS === 'web' ? styles.webAppFrame : styles.nativeAppFrame}
+        >
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <AppProviders />
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </View>
+      </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  webShell: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+  },
+  webAppFrame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: '#FAFAFA',
+  },
+  nativeShell: {
+    flex: 1,
+  },
+  nativeAppFrame: {
+    flex: 1,
+    width: '100%',
+  },
+});

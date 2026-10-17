@@ -213,6 +213,11 @@ export default function AdminDashboard() {
             icon="📋"
           />
           <ActionButton
+            title={t('admin.deletion.title')}
+            route="/admin/deletion-requests"
+            icon="🗂️"
+          />
+          <ActionButton
             title={t('admin.dashboard.tiers')}
             route="/admin/tiers"
             icon="⭐"

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
+import { logger } from "../../utils/logger.js";
 import { toE164 } from "../../utils/phone.js";
 import { normalizeRecentActivity } from "../../utils/recent-activity.js";
 import type { UpdateCustomerStatusInput } from "./schema.js";
@@ -495,7 +496,7 @@ export class AdminCustomersController {
       });
 
       if (auditError) {
-        console.error("[AdminCustomersController.updateCustomerStatus] Audit log insert failed:", auditError.message);
+        logger.warn("Customer status audit log insert failed");
       }
 
       sendSuccess(res, {

@@ -2,7 +2,11 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.js";
 import { requireAdmin } from "../../middleware/requireAdmin.js";
 import { validateBody } from "../../middleware/validate.js";
-import { adminWriteLimiter } from "../../middleware/rateLimit.js";
+import {
+  adminPurchasesLimiter,
+  adminWriteLimiter,
+  redemptionLimiter,
+} from "../../middleware/rateLimit.js";
 import { sendSuccess } from "../../utils/response.js";
 import { adminController } from "./controller.js";
 import { adminDashboardController } from "./dashboard.controller.js";
@@ -12,11 +16,38 @@ import { adminRedemptionsController } from "./redemptions.controller.js";
 import { adminReportsController } from "./reports.controller.js";
 import { adminRulesController } from "./rules.controller.js";
 import { adminAuditController } from "./audit.controller.js";
+import {
+  adminDeletionRequestsController,
+  reviewDeletionRequestSchema,
+} from "./deletion-requests.controller.js";
 import { resetPinSchema, updateCustomerStatusSchema, voidPurchaseSchema, updatePointRulesSchema, updateLoyaltyTierSchema } from "./schema.js";
 import { previewPurchaseSchema, recordPurchaseSchema } from "./purchases.schema.js";
 import { cancelRedemptionSchema, directRedeemSchema } from "./redemptions.schema.js";
 
 const router = Router();
+
+router.get(
+  "/deletion-requests",
+  authMiddleware,
+  requireAdmin,
+  adminDeletionRequestsController.listRequests.bind(adminDeletionRequestsController)
+);
+router.post(
+  "/deletion-requests/:id/done",
+  authMiddleware,
+  requireAdmin,
+  adminWriteLimiter,
+  validateBody(reviewDeletionRequestSchema),
+  adminDeletionRequestsController.markDone.bind(adminDeletionRequestsController)
+);
+router.post(
+  "/deletion-requests/:id/reject",
+  authMiddleware,
+  requireAdmin,
+  adminWriteLimiter,
+  validateBody(reviewDeletionRequestSchema),
+  adminDeletionRequestsController.reject.bind(adminDeletionRequestsController)
+);
 
 /**
  * GET /api/admin/dashboard
@@ -51,9 +82,9 @@ router.post(
  */
 router.post(
   "/purchases",
+  adminPurchasesLimiter,
   authMiddleware,
   requireAdmin,
-  adminWriteLimiter,
   validateBody(recordPurchaseSchema),
   adminPurchasesController.recordPurchase.bind(adminPurchasesController)
 );
@@ -163,6 +194,7 @@ router.get(
  */
 router.get(
   "/customers/:customerCode/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminCustomersController.getCustomerRedemptions.bind(adminCustomersController)
@@ -209,6 +241,7 @@ router.get(
  */
 router.post(
   "/customers/:customerCode/redeem",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminWriteLimiter,
@@ -237,6 +270,7 @@ router.post(
  */
 router.get(
   "/redemptions",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminRedemptionsController.listRedemptions.bind(adminRedemptionsController)
@@ -248,6 +282,7 @@ router.get(
  */
 router.get(
   "/redemptions/:id",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminRedemptionsController.getRedemption.bind(adminRedemptionsController)
@@ -259,6 +294,7 @@ router.get(
  */
 router.post(
   "/redemptions/:id/complete",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminWriteLimiter,
@@ -272,6 +308,7 @@ router.post(
  */
 router.post(
   "/redemptions/:id/cancel",
+  redemptionLimiter,
   authMiddleware,
   requireAdmin,
   adminWriteLimiter,

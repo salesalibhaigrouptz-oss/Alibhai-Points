@@ -31,6 +31,10 @@
     "history": "History",
     "profile": "Profile"
   },
+  "pwa": {
+    "installBanner": "Tap Share, then Add to Home Screen",
+    "dismissInstallBanner": "Dismiss Add to Home Screen instructions"
+  },
   "auth": {
     "welcome": "Welcome",
     "welcomeSubtitle": "Sign in or sign up with your Tanzanian phone number",
@@ -158,10 +162,27 @@
     "city": "City",
     "customerId": "Customer ID",
     "status": "Status",
+    "version": "App version",
+    "privacyPolicy": "Privacy Policy",
+    "linkError": "Unable to open this link. Please try again.",
     "activityDeadline": "Activity deadline",
     "logout": "Log out",
     "logoutConfirm": "Are you sure you want to log out?",
     "language": "Language"
+  },
+  "deletion": {
+    "title": "Account deletion request",
+    "request": "Delete my account",
+    "explanation": "Send an account deletion request for the office to review. The office will contact you before processing it. Any remaining points will be lost, and some records must be kept where required by law. Sending this request does not delete your account.",
+    "reason": "Reason (optional)",
+    "reasonOptional": "You may tell us why you are requesting this",
+    "continue": "Continue",
+    "confirmation": "The office will contact you to process your request. Any remaining points will be lost when your account is closed. Some purchase and accounting records may need to be kept by law. Your account will not be deleted automatically.",
+    "sendRequest": "Send request",
+    "sent": "Request sent",
+    "manualProcessing": "The office will review your request manually. Your account is not deleted automatically.",
+    "pendingStatus": "Your account deletion request is pending with the office.",
+    "learnMore": "How to request account deletion"
   },
   "admin": {
     "dashboard": {
@@ -352,12 +373,33 @@
       "subtitle": "Track all administrator operations",
       "empty": "No audit logs found",
       "failedLoad": "Failed to load audit logs. Tap to retry."
+    },
+    "deletion": {
+      "title": "Deletion requests",
+      "subtitle": "Review account deletion requests. Process them manually.",
+      "empty": "No account deletion requests",
+      "status": "Request status",
+      "pending": "Pending",
+      "done": "Done",
+      "rejected": "Rejected",
+      "reject": "Reject request",
+      "phone": "Phone",
+      "city": "City",
+      "requested": "Requested",
+      "confirmDoneTitle": "Mark request done?",
+      "confirmDoneMessage": "Confirm that the office has manually processed this request. No account data will be deleted by the app.",
+      "confirmRejectTitle": "Reject request?",
+      "confirmRejectMessage": "Are you sure you want to reject this account deletion request?"
     }
   },
   "errors": {
+    "crashTitle": "Something went wrong",
+    "crashMessage": "Please try again. If this continues, contact the Alibhai office for help.",
     "network": "Network error. Please try again.",
+    "timeout": "The request timed out. Check your connection and try again.",
     "server": "Server error. Please try again.",
     "generic": "An error occurred. Please try again.",
+    "DELETION_ALREADY_REQUESTED": "You already have a pending account deletion request.",
     "CUSTOMER_INACTIVE": "Account is inactive",
     "INSUFFICIENT_REDEEMABLE_POINTS": "Insufficient redeemable points",
     "PENDING_REQUEST_EXISTS": "A pending request already exists",

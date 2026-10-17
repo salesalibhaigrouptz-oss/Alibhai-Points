@@ -31,6 +31,10 @@
     "history": "Historia",
     "profile": "Wasifu"
   },
+  "pwa": {
+    "installBanner": "Bonyeza Share, kisha Add to Home Screen",
+    "dismissInstallBanner": "Funga maelekezo ya kuongeza kwenye skrini ya mwanzo"
+  },
   "auth": {
     "welcome": "Karibu",
     "welcomeSubtitle": "Ingia au jisajili kwa namba yako ya simu ya Tanzania",
@@ -158,10 +162,27 @@
     "city": "Mji",
     "customerId": "Namba ya mteja",
     "status": "Hali",
+    "version": "Toleo la programu",
+    "privacyPolicy": "Sera ya Faragha",
+    "linkError": "Imeshindwa kufungua kiungo hiki. Tafadhali jaribu tena.",
     "activityDeadline": "Tarehe ya mwisho ya shughuli",
     "logout": "Ondoka",
     "logoutConfirm": "Una uhakika unataka kuondoka?",
     "language": "Lugha"
+  },
+  "deletion": {
+    "title": "Ombi la kufuta akaunti",
+    "request": "Futa akaunti yangu",
+    "explanation": "Tuma ombi la kufuta akaunti ili ofisi ilipitie. Ofisi itawasiliana nawe kabla ya kulishughulikia. Pointi zako zilizobaki zitapotea na baadhi ya rekodi zitatunzwa pale sheria inapohitaji. Kutuma ombi hakufuti akaunti yako.",
+    "reason": "Sababu (si lazima)",
+    "reasonOptional": "Unaweza kueleza kwa nini unaomba",
+    "continue": "Endelea",
+    "confirmation": "Ofisi itawasiliana nawe kushughulikia ombi lako. Pointi zilizobaki zitapotea akaunti yako itakapofungwa. Baadhi ya rekodi za manunuzi na uhasibu zinaweza kutunzwa kwa mujibu wa sheria. Akaunti yako haitafutwa moja kwa moja.",
+    "sendRequest": "Tuma ombi",
+    "sent": "Ombi limetumwa",
+    "manualProcessing": "Ofisi itapitia ombi lako kwa mkono. Akaunti yako haitafutwa moja kwa moja.",
+    "pendingStatus": "Ombi lako la kufuta akaunti linasubiri ofisi.",
+    "learnMore": "Jinsi ya kuomba kufutwa kwa akaunti"
   },
   "admin": {
     "dashboard": {
@@ -352,12 +373,33 @@
       "subtitle": "Fuatilia vitendo vyote vya maafisa",
       "empty": "Hakuna kumbukumbu za ukaguzi zilizopatikana",
       "failedLoad": "Imeshindwa kupakia kumbukumbu za ukaguzi. Gusa kurudia."
+    },
+    "deletion": {
+      "title": "Maombi ya kufuta akaunti",
+      "subtitle": "Pitia maombi ya kufuta akaunti. Yashughulikie kwa mkono.",
+      "empty": "Hakuna maombi ya kufuta akaunti",
+      "status": "Hali ya ombi",
+      "pending": "Linasubiri",
+      "done": "Imekamilika",
+      "rejected": "Limekataliwa",
+      "reject": "Kataa ombi",
+      "phone": "Simu",
+      "city": "Mji",
+      "requested": "Tarehe ya ombi",
+      "confirmDoneTitle": "Uweke ombi kuwa limekamilika?",
+      "confirmDoneMessage": "Thibitisha kuwa ofisi imeshughulikia ombi hili kwa mkono. Programu haitafuta data ya akaunti.",
+      "confirmRejectTitle": "Ukatae ombi?",
+      "confirmRejectMessage": "Una uhakika unataka kukataa ombi hili la kufuta akaunti?"
     }
   },
   "errors": {
+    "crashTitle": "Kuna hitilafu imetokea",
+    "crashMessage": "Tafadhali jaribu tena. Ikiendelea, wasiliana na ofisi ya Alibhai upate msaada.",
     "network": "Hitilafu ya mtandao. Tafadhali jaribu tena.",
+    "timeout": "Ombi limechukua muda mrefu. Angalia mtandao wako kisha ujaribu tena.",
     "server": "Hitilafu ya seva. Tafadhali jaribu tena.",
     "generic": "Hitilafu imetokea. Tafadhali jaribu tena.",
+    "DELETION_ALREADY_REQUESTED": "Tayari una ombi la kufuta akaunti linalosubiri.",
     "CUSTOMER_INACTIVE": "Akaunti haitumiki",
     "INSUFFICIENT_REDEEMABLE_POINTS": "Point zinazoweza kutumika hazitoshi",
     "PENDING_REQUEST_EXISTS": "Tayari kuna ombi linalosubiri",

@@ -1,4 +1,5 @@
 import { supabase } from "../src/config/supabase.js";
+import { logger } from "../src/utils/logger.js";
 
 /**
  * Expiry Job Script
@@ -11,41 +12,30 @@ import { supabase } from "../src/config/supabase.js";
  *
  * The inactivity period is defined in the active point_rules table (default: 25 days)
  *
- * This script is intended to be run daily via:
- * 1. Cron job (Linux/Mac): 0 5 * * * cd /path/to/api && npm run expiry
- * 2. pg_cron (Supabase): See documentation in supabase/schema.sql
- * 3. Scheduled task (Windows): Task Scheduler
+ * This script is for an explicit one-time manual run only. The daily schedule
+ * is owned by Supabase pg_cron, not by the API or its runtime.
  *
  * East Africa Time (EAT) is UTC+3, so 00:05 EAT = 21:05 UTC
  */
 
 async function runExpiryJob() {
-  console.log("🔄 Starting expiry job...");
-  console.log(`⏰ Started at: ${new Date().toISOString()}`);
+  logger.info("Starting one-time expiry run");
 
   try {
     const { data, error } = await supabase.rpc("expire_overdue_customers");
 
     if (error) {
-      console.error("❌ Error running expiry job:", error);
+      logger.error("Expiry run failed");
       process.exit(1);
     }
 
     const expiredCount = data || 0;
 
-    console.log(`✅ Expiry job completed successfully`);
-    console.log(`📊 Customers expired: ${expiredCount}`);
-    console.log(`⏰ Completed at: ${new Date().toISOString()}`);
-
-    if (expiredCount > 0) {
-      console.log(`⚠️  ${expiredCount} customer(s) became inactive and points were expired`);
-    } else {
-      console.log(`✨ No customers expired - all are within the activity deadline`);
-    }
+    logger.info({ expiredCount }, "Expiry run completed");
 
     process.exit(0);
   } catch (error) {
-    console.error("❌ Unexpected error:", error);
+    logger.error({ errorType: error instanceof Error ? error.name : "unknown" }, "Expiry run failed");
     process.exit(1);
   }
 }

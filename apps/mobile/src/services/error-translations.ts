@@ -19,6 +19,7 @@ export function useErrorTranslation() {
       INVALID_PHONE: 'errors.INVALID_PHONE',
       INVALID_NAME: 'errors.INVALID_NAME',
       NOT_ADMIN: 'errors.NOT_ADMIN',
+      DELETION_ALREADY_REQUESTED: 'errors.DELETION_ALREADY_REQUESTED',
       POINTS_ALREADY_USED_OR_EXPIRED: 'errors.POINTS_ALREADY_USED_OR_EXPIRED',
       ALREADY_VOIDED: 'errors.ALREADY_VOIDED',
       INVALID_TOKEN: 'errors.INVALID_TOKEN',
@@ -27,12 +28,19 @@ export function useErrorTranslation() {
       CONFLICT: 'errors.generic',
       RATE_LIMIT_EXCEEDED: 'errors.server',
       NETWORK_ERROR: 'errors.network',
+      TIMEOUT_ERROR: 'errors.timeout',
+      SERVER_ERROR: 'errors.server',
+      REQUEST_NOT_PENDING: 'errors.generic',
       GENERIC_ERROR: 'errors.generic',
     };
 
     const translationKey = errorMap[code];
     if (translationKey) {
       return t(translationKey);
+    }
+
+    if (code.includes(" / ")) {
+      return code;
     }
 
     return t('errors.generic');

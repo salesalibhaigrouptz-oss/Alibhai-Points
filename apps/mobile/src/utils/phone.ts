@@ -1,3 +1,5 @@
+import { mobileEnv } from "../config/env";
+
 /**
  * Validates and converts Tanzanian phone numbers to E.164 format (+255XXXXXXXXX).
  *
@@ -56,8 +58,7 @@ export function phoneToEmail(phone: string | null | undefined): string {
     );
   }
 
-  const domain =
-    process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN || "points.alibhai.co";
+  const domain = mobileEnv.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN;
 
   // E.164 is +255XXXXXXXXX; slice(1) yields 255XXXXXXXXX
   const localPart = e164.slice(1);

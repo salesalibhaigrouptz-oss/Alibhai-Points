@@ -1,5 +1,10 @@
 import React, { Component, ComponentType, PropsWithChildren } from 'react';
-import { ErrorFallback, ErrorFallbackProps } from '@/components/ErrorFallback';
+import { ErrorFallback } from '@/components/ErrorFallback';
+
+export type ErrorFallbackProps = {
+  error: Error;
+  resetError: () => void;
+};
 
 export type ErrorBoundaryProps = PropsWithChildren<{
   FallbackComponent?: ComponentType<ErrorFallbackProps>;

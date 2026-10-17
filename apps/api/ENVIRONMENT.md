@@ -1,54 +1,38 @@
 # Environment Configuration
 
-## Required Environment Variables
+## Environment Variables
 
-### Server Configuration
-- `NODE_ENV` - Environment: `development`, `test`, or `production`
-- `PORT` - Server port (default: 5000)
-- `CORS_ORIGINS` - Comma-separated list of allowed CORS origins, or `*` for all
+All variables are read from `process.env` and validated with Zod when the API
+starts. Local development may use an ignored `apps/api/.env` file; production
+values belong in the Vercel project’s Environment Variables settings.
 
-### Supabase Configuration
-- `SUPABASE_URL` - Supabase project URL (e.g., `https://your-project.supabase.co`)
-- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (backend only, never exposed to frontend)
-- `SUPABASE_ANON_KEY` - Anonymous key (for frontend auth operations only)
+To run locally, copy `.env.example` to `.env` in `apps/api` and set
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` (at least 32
+characters), and `AUTH_EMAIL_DOMAIN` to values for your Supabase project.
+The backend requires the real Supabase service-role key to perform API
+operations; do not put it in the mobile app or commit the local `.env`.
+Start it from `apps/api` with `npm run dev`; it listens on port 5000 by default.
 
-### Time Zone
-- `TZ` - Server timezone (default: `Africa/Dar_es_Salaam`)
+Required:
+- `SUPABASE_URL` - Supabase project URL.
+- `SUPABASE_SERVICE_ROLE_KEY` - Backend-only service-role key.
+- `JWT_SECRET` - Secret of at least 32 characters for API-issued JWTs.
+- `AUTH_EMAIL_DOMAIN` - Auth email domain configured for the Supabase project.
 
-## Environment Files
+Optional:
+- `NODE_ENV` - `development`, `test`, or `production` (Vercel: `production`).
+- `PORT` - Local server port (default: `5000`; Vercel supplies its own runtime).
+- `CORS_ORIGINS` - Comma-separated exact browser origins. Requests with no
+  `Origin` header are allowed; other browser origins receive no CORS permission.
 
-### Development (.env.development)
-```bash
-NODE_ENV=development
-PORT=5000
-CORS_ORIGINS=http://localhost:8081,http://localhost:19006
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SUPABASE_ANON_KEY=your-anon-key
-TZ=Africa/Dar_es_Salaam
-```
+Required in production:
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
 
-### Production (.env.production)
-```bash
-NODE_ENV=production
-PORT=5000
-CORS_ORIGINS=https://your-frontend-domain.com
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SUPABASE_ANON_KEY=your-anon-key
-TZ=Africa/Dar_es_Salaam
-```
-
-### Test (.env.test)
-```bash
-NODE_ENV=test
-PORT=5001
-CORS_ORIGINS=*
-SUPABASE_URL=https://test-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=test-service-role-key
-SUPABASE_ANON_KEY=test-anon-key
-TZ=Africa/Dar_es_Salaam
-```
+Production rate limits use Upstash Redis so they are shared between serverless
+instances. Only local development uses the in-memory rate limiter. Tests disable
+rate limiting and use non-production placeholder values from `tests/setup.ts`.
+No real secret belongs in `.env.example` or source control.
 
 ## Security Notes
 
@@ -71,13 +55,10 @@ The backend uses dotenv to load environment variables from:
 3. `.env.production` (production)
 4. `.env.test` (testing)
 
-## Time Zone Configuration
+## Expiry Schedule
 
-The application runs in East Africa Time (EAT) - UTC+3:
-- Timezone: `Africa/Dar_es_Salaam`
-- The expiry job is scheduled to run at 21:05 UTC (00:05 EAT)
-- All timestamps in the database are stored in UTC
-- Display logic converts to local time for users
+The daily expiry job runs in Supabase `pg_cron`; the API does not schedule it.
+See [PG_CRON_CONFIGURATION.md](./PG_CRON_CONFIGURATION.md).
 
 ## Supabase Backups
 

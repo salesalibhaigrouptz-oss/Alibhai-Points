@@ -32,6 +32,10 @@ import {
   getCustomerRedemptions as getMyRedemptions,
   resetCustomerPin,
   getRecentActivity,
+  getMyAccountDeletionRequest,
+  createMyAccountDeletionRequest,
+  getAdminAccountDeletionRequests,
+  reviewAccountDeletionRequest,
 } from "./api";
 
 // Auth hooks
@@ -372,5 +376,47 @@ export const useRecentActivity = () => {
     queryKey: ["customer", "recent-activity"],
     queryFn: () => getRecentActivity(),
     staleTime: 60 * 1000, // 1 minute
+  });
+};
+
+export const useMyAccountDeletionRequest = () => {
+  return useQuery({
+    queryKey: ["customer", "account-deletion-request"],
+    queryFn: getMyAccountDeletionRequest,
+    staleTime: 30 * 1000,
+  });
+};
+
+export const useCreateAccountDeletionRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reason?: string) => createMyAccountDeletionRequest(reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["customer", "account-deletion-request"],
+      });
+    },
+  });
+};
+
+export const useAdminAccountDeletionRequests = (status?: string) => {
+  return useQuery({
+    queryKey: ["admin", "account-deletion-requests", status],
+    queryFn: () => getAdminAccountDeletionRequests(status),
+    staleTime: 30 * 1000,
+  });
+};
+
+export const useReviewAccountDeletionRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "done" | "reject" }) =>
+      reviewAccountDeletionRequest(id, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "account-deletion-requests"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+    },
   });
 };
