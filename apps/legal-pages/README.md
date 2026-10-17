@@ -25,12 +25,11 @@ leaving the page.
 
 ## Before publishing
 
-Replace every square-bracket placeholder in both pages with approved business
-information and retention/processing periods. In particular, confirm the
-legal name, address, support email and phone/WhatsApp contact, effective date,
-general data-retention period, accounting-record retention period, and
-deletion-request processing time. Review the final wording with the business
-and local legal adviser before publishing.
+The business name, address, email and phone/WhatsApp contacts are filled in.
+Replace the remaining square-bracket placeholders in both pages with approved
+effective date, general data-retention period, accounting-record retention
+period, and deletion-request processing time. Review the final wording with
+the business and local legal adviser before publishing.
 
 The mobile app's optional links can be set to the deployed site's
 `https://<your-domain>/privacy` and

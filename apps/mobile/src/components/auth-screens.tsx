@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
+  Alert,
   Keyboard,
   Linking,
   Platform,
@@ -352,6 +353,15 @@ export function LoginScreen() {
         <Text style={[styles.forgotPinNotice, { color: colors.mutedForeground }]}>
           {t("auth.forgotPin")}
         </Text>
+
+        <TextButton
+          label={t("auth.privacyPolicy")}
+          onPress={() =>
+            void Linking.openURL("https://alibhaipoints-legalpages.vercel.app/").catch(
+              () => Alert.alert(t("common.error"), t("profile.linkError"))
+            )
+          }
+        />
 
         <View style={styles.switchAuthRow}>
           <Text style={[styles.legalText, { color: colors.mutedForeground }]}>
