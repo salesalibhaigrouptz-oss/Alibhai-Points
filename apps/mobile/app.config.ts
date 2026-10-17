@@ -62,6 +62,7 @@ if (isSupabaseServiceRoleKey(supabaseKey)) {
 }
 
 const config: ExpoConfig = {
+  owner: "alibhai-group-tanzanias-team",
   name: "Alibhai Points",
   slug: "alibhai-points",
   version: "1.0.0",
@@ -136,6 +137,11 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
+  },
+  extra: {
+    eas: {
+      projectId: "75f03987-9115-460e-ae2e-d6a6b01eef75",
+    },
   },
 };
 
