@@ -24,6 +24,9 @@ Optional:
 - `PORT` - Local server port (default: `5000`; Vercel supplies its own runtime).
 - `CORS_ORIGINS` - Comma-separated exact browser origins. Requests with no
   `Origin` header are allowed; other browser origins receive no CORS permission.
+- `MIN_APP_VERSION` - Minimum supported mobile app version returned by
+  `GET /api/health` (default: `1.0.0`). Set this to require Android users with
+  older versions to update from Google Play.
 
 Required in production:
 - `UPSTASH_REDIS_REST_URL`

@@ -5,6 +5,7 @@ import customerRoutes from "./modules/customers/routes.js";
 import adminRoutes from "./modules/admin/routes.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { sendSuccess } from "./utils/response.js";
+import { env } from "./config/env.js";
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.get("/health", (_req, res) => {
     timestamp: new Date().toISOString(),
     service: "Alibhai Points API",
     version: "2.0.0",
+    min_app_version: env.MIN_APP_VERSION,
   });
 });
 

@@ -18,6 +18,7 @@ const envSchema = z.object({
     .min(1, { message: "AUTH_EMAIL_DOMAIN is required" }),
   PORT: z.coerce.number().int().positive().default(5000),
   CORS_ORIGINS: z.string().default(""),
+  MIN_APP_VERSION: z.string().default("1.0.0"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),

@@ -48,6 +48,9 @@ paths:
                         type: string
                       version:
                         type: string
+                      min_app_version:
+                        type: string
+                        description: Minimum supported mobile app version
 
   /me:
     get:
