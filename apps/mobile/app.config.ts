@@ -138,6 +138,12 @@ const config: ExpoConfig = {
     typedRoutes: true,
     reactCompiler: true,
   },
+  updates: {
+    url: "https://u.expo.dev/75f03987-9115-460e-ae2e-d6a6b01eef75",
+  },
+  runtimeVersion: {
+    policy: "fingerprint",
+  },
   extra: {
     eas: {
       projectId: "75f03987-9115-460e-ae2e-d6a6b01eef75",

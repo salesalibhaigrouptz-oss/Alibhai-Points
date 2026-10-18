@@ -39,6 +39,7 @@ import {
 import { useErrorTranslation } from "@/services/error-translations";
 import { useFormattedValues } from "@/utils/formatting";
 import { LanguageToggle } from "@/components/language-toggle";
+import { AppBuildInfo } from "@/components/app-release-manager";
 import Constants from "expo-constants";
 import { mobileEnv } from "@/config/env";
 import {
@@ -739,6 +740,7 @@ export function ProfileScreen() {
           testID="profile-sign-out"
         />
       </View>
+      <AppBuildInfo />
     </Page>
   );
 }

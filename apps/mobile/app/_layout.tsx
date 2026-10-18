@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform, StyleSheet, View } from 'react-native';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { IosInstallBanner } from '@/components/ios-install-banner';
+import { AppReleaseManager } from '@/components/app-release-manager';
 import { AuthProvider } from '@/services/auth-context';
 import { configureApiClient } from '@/services/api';
 import { useColors } from '@/hooks/useColors';
@@ -67,6 +68,7 @@ function AppProviders() {
         <AuthProvider>
           <RootLayoutNav />
           <IosInstallBanner />
+          <AppReleaseManager />
         </AuthProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

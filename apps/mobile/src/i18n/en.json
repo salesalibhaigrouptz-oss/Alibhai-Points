@@ -60,7 +60,7 @@
     "loginError": "Phone number or PIN is incorrect",
     "welcomeMessage": "This is your customer ID",
     "registrationSuccess": "Your account has been created",
-    "forgotPin": "Forgot PIN? Contact the office.",
+    "forgotPin": "Forgot PIN? Contact the office for further steps.",
     "dontHaveAccount": "Don't have an account?",
     "alreadyHaveAccount": "Already have an account?",
     "tagline": "Points, made simple.",

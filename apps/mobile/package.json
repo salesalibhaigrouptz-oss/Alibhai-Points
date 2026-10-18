@@ -60,6 +60,7 @@
     "expo-build-properties": "~57.0.22",
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "^57.0.23",
+    "expo-updates": "~57.0.26",
     "i18next": "^26.4.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

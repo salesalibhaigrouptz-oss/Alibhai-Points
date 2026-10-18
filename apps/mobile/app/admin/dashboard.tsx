@@ -6,6 +6,7 @@ import { useAuth } from '@/services/auth-context';
 import { useDashboardMetrics, useCustomerCities } from '@/services/hooks';
 import { apiErrorMessage } from '@/services/api';
 import { LanguageToggle } from '@/components/language-toggle';
+import { AppBuildInfo } from '@/components/app-release-manager';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -252,6 +253,7 @@ export default function AdminDashboard() {
           </View>
         </View>
       )}
+      <AppBuildInfo />
     </ScrollView>
   );
 }

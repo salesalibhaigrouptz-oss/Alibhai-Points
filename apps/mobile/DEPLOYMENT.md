@@ -55,18 +55,42 @@ Install the EAS CLI once if it is not already installed:
 npm install --global eas-cli
 ```
 
-Then run these commands in order:
+EAS Update has already been configured for this project. For a new project,
+run the following setup once from `apps/mobile`:
+
+```sh
+cd apps/mobile
+npx expo install expo-updates
+eas update:configure
+```
+
+Then run these release commands from `apps/mobile` in order:
 
 ```sh
 eas login
-cd apps/mobile
-eas build:configure
 eas build --platform android --profile preview
 eas build --platform android --profile production
+eas update --channel preview
+eas update --channel production
 ```
 
 The Preview profile builds an internal-install APK for testing. Production
 builds an Android App Bundle (`.aab`).
+
+The app uses EAS Update with the `preview` and `production` channels. Keep the
+store version at `1.0.0`; EAS manages the Android `versionCode` remotely and
+increments it for each production build. The fingerprint runtime policy keeps
+updates compatible with each build's native dependencies and configuration.
+The earlier production artifact was built without `expo-updates`, so replace it
+with this new Play Store build before relying on OTA updates; the old artifact
+cannot receive EAS Updates.
+
+Publish JavaScript, styling, and compatible bundled-asset changes with
+`eas update --channel preview`, test them on a preview build, then publish to
+production with `eas update --channel production`. To roll back, run
+`eas update:rollback` and follow the interactive prompts to choose a previous
+update or the build's embedded update. Native dependency, permission, or other
+native configuration changes require a new Play Store build.
 
 Android is configured to compile and target API 36, with cleartext HTTP
 disabled and only the Internet permission allowed.
