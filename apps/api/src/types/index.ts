@@ -8,6 +8,7 @@ export interface Profile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  must_change_pin: boolean;
   created_at: string;
   updated_at: string;
 }

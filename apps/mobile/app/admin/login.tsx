@@ -56,7 +56,11 @@ export default function AdminLogin() {
         return;
       }
 
-      await signIn(res.token, "admin");
+      const me = await signIn(res.token, "admin");
+      if (me.must_change_pin) {
+        router.replace("/change-pin" as any);
+        return;
+      }
       router.replace("/admin/dashboard" as any);
     } catch (err: any) {
       const msg =

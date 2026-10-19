@@ -69,6 +69,7 @@ export function createApp(): Express {
         serializers: {
           req: (req) => ({
             method: req.method,
+            url: req.url,
             id: req.id,
           }),
           res: (res) => ({

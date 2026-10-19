@@ -5,6 +5,7 @@ declare global {
   namespace Express {
     interface Request {
       id?: string;
+      authLoaded?: boolean;
       user?: User;
       profile?: Profile | null;
       customer?: Customer | null;

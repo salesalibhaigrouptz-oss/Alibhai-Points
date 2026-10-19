@@ -3,6 +3,7 @@ import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
 import { logger } from "../../utils/logger.js";
+import { phoneToLoginEmail } from "../../utils/phone.js";
 import type { ResetPinInput } from "./schema.js";
 
 export class AdminController {
@@ -49,7 +50,7 @@ export class AdminController {
       // ── 2. Fetch profile to confirm customer_code → auth user mapping ─────
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("id")
+        .select("id, phone")
         .eq("id", customerData.profile_id)
         .maybeSingle();
 
@@ -65,20 +66,49 @@ export class AdminController {
 
       // ── 3. Update PIN hash in user_metadata ──────────────────────────────
       const { hashPin } = await import("../../utils/pin.js");
+      const { data: existingAuthUser, error: authLookupError } =
+        await supabase.auth.admin.getUserById(authUserId);
+      if (authLookupError || !existingAuthUser?.user) {
+        throw new AppError(500, "AUTH_LOOKUP_FAILED", "Failed to resolve customer auth account");
+      }
+
+      const userUpdate: {
+        password: string;
+        user_metadata: Record<string, unknown>;
+        email?: string;
+        email_confirm?: boolean;
+      } = {
+        password: new_pin,
+        user_metadata: {
+          ...existingAuthUser.user.user_metadata,
+          pin_hash: hashPin(new_pin),
+        },
+      };
+      if (!existingAuthUser.user.email) {
+        userUpdate.email = phoneToLoginEmail(profileData.phone);
+        userUpdate.email_confirm = true;
+      }
+
       const { error: updateError } = await supabase.auth.admin.updateUserById(
         authUserId,
-        {
-          password: new_pin,
-          user_metadata: { pin_hash: hashPin(new_pin) },
-        }
+        userUpdate
       );
 
       if (updateError) {
         throw new AppError(
           500,
           "AUTH_UPDATE_FAILED",
-          `Failed to reset PIN: ${updateError.message}`
+          "Failed to reset PIN"
         );
+      }
+
+      const { error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update({ must_change_pin: true })
+        .eq("id", authUserId);
+
+      if (profileUpdateError) {
+        throw new AppError(500, "DATABASE_ERROR", "Failed to require PIN change");
       }
 
       // ── 4. Write audit log (PIN is intentionally excluded) ────────────────

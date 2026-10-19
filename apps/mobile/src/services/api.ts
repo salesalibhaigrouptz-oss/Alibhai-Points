@@ -10,10 +10,15 @@ type RetryableRequest = InternalAxiosRequestConfig & {
 };
 
 let onUnauthorizedCallback: (() => void) | null = null;
+let onPinChangeRequiredCallback: (() => void) | null = null;
 let inMemoryToken: string | null = null;
 
 export function setOnUnauthorizedCallback(cb: (() => void) | null): void {
   onUnauthorizedCallback = cb;
+}
+
+export function setOnPinChangeRequiredCallback(cb: (() => void) | null): void {
+  onPinChangeRequiredCallback = cb;
 }
 
 export async function setStoredToken(token: string | null): Promise<void> {
@@ -50,6 +55,13 @@ export const apiClient: AxiosInstance = axios.create({
 // Request interceptor: attach access token
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    if (
+      config.url?.includes("/api/auth/login") ||
+      config.url?.includes("/api/auth/signup")
+    ) {
+      config.headers.delete("Authorization");
+      return config;
+    }
     try {
       const token = await getStoredToken();
       if (token) {
@@ -68,8 +80,21 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error?.response?.status as number | undefined;
+    const requestUrl = String(error?.config?.url || "");
+    const isPublicAuthRequest =
+      requestUrl.includes("/api/auth/login") ||
+      requestUrl.includes("/api/auth/signup");
+    if (
+      status === 403 &&
+      error?.response?.data?.error?.code === "PIN_CHANGE_REQUIRED"
+    ) {
+      onPinChangeRequiredCallback?.();
+      try {
+        router.replace("/change-pin" as any);
+      } catch {}
+    }
 
-    if (error?.response?.status === 401) {
+    if (error?.response?.status === 401 && !isPublicAuthRequest) {
       await setStoredToken(null);
       if (onUnauthorizedCallback) {
         try {
@@ -197,6 +222,7 @@ export function apiErrorMessage(error: unknown): string {
 
 export type UserProfile = {
   registered: boolean;
+  must_change_pin: boolean;
   role?: "customer" | "admin";
   profile?: {
     id: string;
@@ -230,6 +256,17 @@ export async function fetchMe(token?: string): Promise<UserProfile> {
     { headers }
   );
   return response.data?.data || (response.data as unknown as UserProfile);
+}
+
+export async function changePin(
+  currentPin: string,
+  newPin: string
+): Promise<{ token?: string; message: string }> {
+  const response = await apiClient.post("/api/me/change-pin", {
+    current_pin: currentPin,
+    new_pin: newPin,
+  });
+  return response.data?.data || response.data;
 }
 
 /**

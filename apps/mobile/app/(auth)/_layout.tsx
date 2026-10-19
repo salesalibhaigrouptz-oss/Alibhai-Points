@@ -5,7 +5,7 @@ import { useAuth } from "@/services/auth-context";
 
 export default function AuthLayout() {
   const colors = useColors();
-  const { status, role } = useAuth();
+  const { status, role, mustChangePin } = useAuth();
   if (status === "restoring") {
     return (
       <View
@@ -21,6 +21,9 @@ export default function AuthLayout() {
     );
   }
   if (status === "signed-in") {
+    if (mustChangePin) {
+      return <Redirect href={"/change-pin" as any} />;
+    }
     if (role === "admin") {
       return <Redirect href={"/admin/dashboard" as any} />;
     }

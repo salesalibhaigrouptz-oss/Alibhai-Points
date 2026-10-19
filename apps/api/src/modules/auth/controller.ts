@@ -63,12 +63,14 @@ export class AuthController {
           registered: false,
           user_id: user.id,
           phone: user.phone || null,
+          must_change_pin: false,
         });
         return;
       }
 
       sendSuccess(res, {
         registered: true,
+        must_change_pin: Boolean(profile.must_change_pin),
         role: profile.role,
         profile: {
           full_name: profile.full_name,

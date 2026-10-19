@@ -31,6 +31,7 @@ Production (and Preview if previews should use a separate backend):
 | --- | --- |
 | `NODE_ENV` | `production` |
 | `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase publishable/anonymous key for current-PIN verification |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key (backend only) |
 | `JWT_SECRET` | A private random value of at least 32 characters |
 | `AUTH_EMAIL_DOMAIN` | Auth email domain used by this project |
@@ -39,8 +40,9 @@ Production (and Preview if previews should use a separate backend):
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token |
 
 Set real values only in Vercel's dashboard or an ignored local `.env` file.
-Do not commit credentials, add the service-role key to the mobile app, or use
-`SUPABASE_ANON_KEY` in this backend. `PORT` is only needed locally. The API
+Do not commit credentials or add the service-role key to the mobile app.
+`SUPABASE_ANON_KEY` is used only for Auth verification with a non-persistent
+client; it has no elevated privileges. `PORT` is only needed locally. The API
 allows requests without an `Origin` header; browsers are allowed only when
 their exact origin appears in `CORS_ORIGINS`.
 

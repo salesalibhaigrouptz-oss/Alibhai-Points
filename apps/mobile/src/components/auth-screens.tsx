@@ -260,10 +260,18 @@ export function LoginScreen() {
         throw new Error("No token returned");
       }
 
-      const role = res.role || "customer";
-      await signIn(token, role);
+      const me = await signIn(token, res.role || "customer");
 
-      if (role === "admin") {
+      if (me.registered === false) {
+        router.replace("/(auth)/registration");
+        return;
+      }
+      if (me.must_change_pin) {
+        router.replace("/change-pin" as any);
+        return;
+      }
+
+      if (me.role === "admin") {
         router.replace("/admin/dashboard" as any);
       } else {
         router.replace("/(tabs)");

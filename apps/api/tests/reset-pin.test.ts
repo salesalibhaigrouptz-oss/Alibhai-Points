@@ -72,6 +72,9 @@ function mockFromForAdmin(profileData: object | null) {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         maybeSingle: vi.fn().mockResolvedValue({ data: profileData, error: null }),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
       } as any;
     }
     // customers (from auth middleware) or audit_logs — return empty/ok
@@ -218,11 +221,22 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
       data: { user: {} as any },
       error: null,
     });
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
+      data: {
+        user: {
+          id: "u-cust-001",
+          email: "255712000002@test.points.example.com",
+          user_metadata: {},
+        } as any,
+      },
+      error: null,
+    });
 
     // Track how many times 'profiles' has been queried:
     //  - 1st call  → auth middleware → returns ADMIN_PROFILE (role: admin)
     //  - 2nd call  → controller resolves profile_id → returns { id: 'u-cust-001' }
     let profileCallCount = 0;
+    const profileUpdate = vi.fn();
 
     vi.spyOn(supabase, "from").mockImplementation((table: string) => {
       if (table === "profiles") {
@@ -230,11 +244,15 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
         const profileData =
           profileCallCount === 1
             ? ADMIN_PROFILE          // auth middleware
-            : { id: "u-cust-001" };  // controller lookup
+            : { id: "u-cust-001", phone: "+255712000002" };  // controller lookup
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({ data: profileData, error: null }),
+          update: vi.fn().mockImplementation((payload) => {
+            profileUpdate(payload);
+            return { eq: vi.fn().mockResolvedValue({ error: null }) };
+          }),
         } as any;
       }
       if (table === "customers") {
@@ -274,6 +292,7 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
         pin_hash: expect.any(String),
       }),
     });
+    expect(profileUpdate).toHaveBeenCalledWith({ must_change_pin: true });
   });
 
   it("should never include the PIN value in the response body", async () => {
@@ -295,6 +314,9 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
             data: { id: "u-cust-001" },
             error: null,
           }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
         } as any;
       }
       if (table === "audit_logs") {
@@ -310,6 +332,16 @@ describe("Admin PIN Reset (POST /api/admin/customers/:customerCode/reset-pin)", 
 
     vi.spyOn(supabase.auth.admin, "updateUserById").mockResolvedValue({
       data: { user: {} as any },
+      error: null,
+    });
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
+      data: {
+        user: {
+          id: "u-cust-001",
+          email: "255712000002@test.points.example.com",
+          user_metadata: {},
+        } as any,
+      },
       error: null,
     });
 

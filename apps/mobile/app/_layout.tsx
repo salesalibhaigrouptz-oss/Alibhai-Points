@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { IosInstallBanner } from '@/components/ios-install-banner';
 import { AppReleaseManager } from '@/components/app-release-manager';
@@ -17,9 +17,13 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import initI18n from '@/i18n';
+import { useAuth } from '@/services/auth-context';
+
+const PIN_CHANGE_SUCCESS_MESSAGE =
+  'PIN imebadilishwa kwa mafanikio / PIN changed successfully';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -34,9 +38,25 @@ configureApiClient();
 
 function RootLayoutNav() {
   const colors = useColors();
+  const segments = useSegments();
+  const { mustChangePin, status } = useAuth();
+
+  useEffect(() => {
+    if (status === 'restoring') return;
+
+    const rootSegment = (segments as string[])[0];
+
+    if (status === 'signed-in' && mustChangePin) {
+      if (rootSegment !== 'change-pin') {
+        router.replace('/change-pin' as any);
+      }
+    }
+  }, [status, mustChangePin, segments]);
+
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="change-pin" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
@@ -66,12 +86,39 @@ function AppProviders() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardProvider>
         <AuthProvider>
-          <RootLayoutNav />
-          <IosInstallBanner />
-          <AppReleaseManager />
+          <AuthenticatedApp />
         </AuthProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AuthenticatedApp() {
+  const { mustChangePin } = useAuth();
+  return (
+    <>
+      <RootLayoutNav />
+      <PinChangeSuccessNotice />
+      {!mustChangePin ? (
+        <>
+          <IosInstallBanner />
+          <AppReleaseManager />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function PinChangeSuccessNotice() {
+  const { pinChangeSuccess } = useAuth();
+  if (!pinChangeSuccess) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.successToast}>
+      <Text style={styles.successToastText}>
+        {PIN_CHANGE_SUCCESS_MESSAGE}
+      </Text>
+    </View>
   );
 }
 
@@ -146,5 +193,22 @@ const styles = StyleSheet.create({
   nativeAppFrame: {
     flex: 1,
     width: '100%',
+  },
+  successToast: {
+    position: 'absolute',
+    top: 48,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#236B45',
+  },
+  successToastText: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

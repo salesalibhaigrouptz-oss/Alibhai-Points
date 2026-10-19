@@ -6,9 +6,12 @@ import { useAuth } from "@/services/auth-context";
 
 export default function IndexRoute() {
   const colors = useColors();
-  const { status, role } = useAuth();
+  const { status, role, mustChangePin } = useAuth();
 
   if (status === "signed-in") {
+    if (mustChangePin) {
+      return <Redirect href={"/change-pin" as any} />;
+    }
     if (role === "admin") {
       return <Redirect href={"/admin/dashboard" as any} />;
     }

@@ -6,6 +6,11 @@ import adminRoutes from "./modules/admin/routes.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { sendSuccess } from "./utils/response.js";
 import { env } from "./config/env.js";
+import { pinChangeRequiredMiddleware } from "./middleware/pinChangeRequired.js";
+import { pinChangeLimiter } from "./middleware/rateLimit.js";
+import { validateBody } from "./middleware/validate.js";
+import { changePinSchema } from "./modules/auth/schema.js";
+import { changePinController } from "./modules/auth/change-pin.controller.js";
 
 const router = Router();
 
@@ -23,12 +28,22 @@ router.get("/health", (_req, res) => {
   });
 });
 
+router.use(pinChangeRequiredMiddleware);
+
 /**
  * Current User Profile / Identity Endpoint
  * GET /api/me
  * Protected by authMiddleware (validates token with Supabase and loads database profile)
  */
 router.get("/me", authMiddleware, authController.getMe.bind(authController));
+
+router.post(
+  "/me/change-pin",
+  authMiddleware,
+  pinChangeLimiter,
+  validateBody(changePinSchema),
+  changePinController.changePin.bind(changePinController)
+);
 
 /**
  * Sub-module route mounts

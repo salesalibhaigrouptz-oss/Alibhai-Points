@@ -20,6 +20,11 @@ export async function authMiddleware(
   _res: Response,
   next: NextFunction
 ): Promise<void> {
+  if (req.authLoaded) {
+    next();
+    return;
+  }
+
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -87,6 +92,7 @@ export async function authMiddleware(
       req.customer = null;
     }
 
+    req.authLoaded = true;
     next();
   } catch (error) {
     next(error);

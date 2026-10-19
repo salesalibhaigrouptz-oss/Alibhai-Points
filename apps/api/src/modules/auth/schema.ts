@@ -28,6 +28,17 @@ export const loginSchema = z
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+export const changePinSchema = z.object({
+  current_pin: z
+    .string({ required_error: "current_pin is required" })
+    .regex(/^\d{6}$/, { message: "current_pin must be exactly 6 digits" }),
+  new_pin: z
+    .string({ required_error: "new_pin is required" })
+    .regex(/^\d{6}$/, { message: "new_pin must be exactly 6 digits" }),
+}).strict();
+
+export type ChangePinInput = z.infer<typeof changePinSchema>;
+
 export const signupSchema = z.object({
   fullName: z
     .string()

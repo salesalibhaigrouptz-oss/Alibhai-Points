@@ -2,13 +2,18 @@ import { Stack, Redirect, useSegments } from 'expo-router';
 import { useAuth } from '@/services/auth-context';
 
 export default function AdminLayout() {
-  const { role, status } = useAuth();
+  const { role, status, mustChangePin } = useAuth();
   const segments = useSegments();
   const currentRoute = segments[segments.length - 1];
 
   // Show nothing while restoring auth
   if (status === 'restoring') {
     return null;
+  }
+
+  // If user must change PIN, prevent access to admin area and redirect
+  if (status === 'signed-in' && mustChangePin) {
+    return <Redirect href={"/change-pin" as any} />;
   }
 
   // Allow login screen to be accessible without auth

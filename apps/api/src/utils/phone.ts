@@ -67,3 +67,7 @@ export function getVerifiedPhone(user: User): string {
   }
   return toE164(user.phone);
 }
+
+export function phoneToLoginEmail(phone: string): string {
+  return `${toE164(phone).slice(1)}@${env.AUTH_EMAIL_DOMAIN}`;
+}

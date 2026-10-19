@@ -7,14 +7,17 @@ starts. Local development may use an ignored `apps/api/.env` file; production
 values belong in the Vercel project’s Environment Variables settings.
 
 To run locally, copy `.env.example` to `.env` in `apps/api` and set
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` (at least 32
-characters), and `AUTH_EMAIL_DOMAIN` to values for your Supabase project.
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`
+(at least 32 characters), and `AUTH_EMAIL_DOMAIN` to values for your Supabase
+project.
 The backend requires the real Supabase service-role key to perform API
 operations; do not put it in the mobile app or commit the local `.env`.
 Start it from `apps/api` with `npm run dev`; it listens on port 5000 by default.
 
 Required:
 - `SUPABASE_URL` - Supabase project URL.
+- `SUPABASE_ANON_KEY` - Supabase publishable/anonymous key used only to verify
+  the current PIN through a separate non-persistent Auth client.
 - `SUPABASE_SERVICE_ROLE_KEY` - Backend-only service-role key.
 - `JWT_SECRET` - Secret of at least 32 characters for API-issued JWTs.
 - `AUTH_EMAIL_DOMAIN` - Auth email domain configured for the Supabase project.
@@ -33,8 +36,8 @@ Required in production:
 - `UPSTASH_REDIS_REST_TOKEN`
 
 Production rate limits use Upstash Redis so they are shared between serverless
-instances. Only local development uses the in-memory rate limiter. Tests disable
-rate limiting and use non-production placeholder values from `tests/setup.ts`.
+instances. Only local development and tests use the in-memory rate limiter;
+tests use non-production placeholder values from `tests/setup.ts`.
 No real secret belongs in `.env.example` or source control.
 
 ## Security Notes

@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import { supabase } from "../../config/supabase.js";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/errors.js";
-import { toE164 } from "../../utils/phone.js";
+import { phoneToLoginEmail, toE164 } from "../../utils/phone.js";
 import { hashPin, verifyPin } from "../../utils/pin.js";
 import type { Customer, Profile } from "../../types/index.js";
 
@@ -22,8 +22,7 @@ export interface AuthSessionResponse {
 
 export class AuthService {
   /**
-   * Pure Phone + 6-digit PIN Login.
-   * NO EMAIL USED.
+   * Phone + 6-digit PIN login backed by the phone-derived Supabase Auth email.
    */
   async login(phone: string, pin: string): Promise<AuthSessionResponse> {
     const normalizedPhone = toE164(phone);
@@ -88,7 +87,7 @@ export class AuthService {
         id: profile.id,
         role: profile.role,
         phone: profile.phone,
-        email: null, // For fake-email flow tests, this should be the phone-derived email
+        email: authData.user.email || phoneToLoginEmail(normalizedPhone),
       },
       env.JWT_SECRET,
       { expiresIn: "30d" }
@@ -103,8 +102,7 @@ export class AuthService {
   }
 
   /**
-   * Pure Phone + Name + 6-digit PIN Sign Up.
-   * NO EMAIL USED.
+   * Phone + Name + 6-digit PIN sign up with a phone-derived Supabase Auth email.
    */
   async signup(
     fullName: string,
@@ -149,12 +147,15 @@ export class AuthService {
 
     const pinHash = hashPin(pin);
 
-    // 2. Create user in auth.users with phone only (NO email)
+    // Keep a deterministic email identity for Supabase password sign-in.
     let userId: string;
     const { data: createData, error: createError } =
       await supabase.auth.admin.createUser({
+        email: phoneToLoginEmail(normalizedPhone),
+        email_confirm: true,
         phone: normalizedPhone,
         phone_confirm: true,
+        password: pin,
         user_metadata: { pin_hash: pinHash, role: "customer" },
       });
 
@@ -171,6 +172,13 @@ export class AuthService {
 
       if (existingUser) {
         await supabase.auth.admin.updateUserById(existingUser.id, {
+          ...(existingUser.email
+            ? {}
+            : {
+                email: phoneToLoginEmail(normalizedPhone),
+                email_confirm: true,
+              }),
+          password: pin,
           user_metadata: { pin_hash: pinHash, role: "customer" },
         });
         userId = existingUser.id;
@@ -210,7 +218,7 @@ export class AuthService {
         id: userId,
         role: "customer",
         phone: normalizedPhone,
-        email: null, // For fake-email flow compatibility
+        email: phoneToLoginEmail(normalizedPhone),
       },
       env.JWT_SECRET,
       { expiresIn: "30d" }

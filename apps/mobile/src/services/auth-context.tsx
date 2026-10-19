@@ -13,7 +13,10 @@ import {
   getStoredToken,
   setStoredToken,
   setOnUnauthorizedCallback,
+  setOnPinChangeRequiredCallback,
+  type UserProfile,
 } from "./api";
+import { supabase } from "./supabase";
 
 export const ACCESS_TOKEN_KEY = "access_token";
 
@@ -22,11 +25,15 @@ export type AuthStatus = "signed-in" | "signed-out" | "restoring";
 
 type AuthContextValue = {
   role: AppRole | null;
+  phone: string | null;
+  mustChangePin: boolean;
+  pinChangeSuccess: boolean;
+  showPinChangeSuccess: () => void;
   status: AuthStatus;
   signOut: () => Promise<void>;
   pendingRegistrationToken: string | null;
   setPendingRegistrationToken: (token: string | null) => void;
-  signIn: (token: string, userRole?: AppRole) => Promise<void>;
+  signIn: (token: string, userRole?: AppRole) => Promise<UserProfile>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -34,6 +41,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
   const [role, setRole] = useState<AppRole | null>(null);
+  const [phone, setPhone] = useState<string | null>(null);
+  const [mustChangePin, setMustChangePin] = useState(false);
+  const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
   const [status, setStatus] = useState<AuthStatus>("restoring");
   const [pendingRegistrationToken, setPendingRegistrationToken] = useState<
     string | null
@@ -50,6 +60,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (!token) {
           if (isMounted) {
             setRole(null);
+            setPhone(null);
+            setMustChangePin(false);
             setStatus("signed-out");
           }
           return;
@@ -62,22 +74,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
           if (me.registered === false) {
             setPendingRegistrationToken(token);
             setRole(null);
+            setPhone(null);
+            setMustChangePin(false);
             setStatus("signed-out");
             return;
           }
 
           setRole(me.role || "customer");
+          setPhone(me.profile?.phone || me.phone || null);
+          setMustChangePin(me.must_change_pin);
           setStatus("signed-in");
         } catch {
           await setStoredToken(null);
           if (isMounted) {
             setRole(null);
+            setPhone(null);
+            setMustChangePin(false);
             setStatus("signed-out");
           }
         }
       } catch {
         if (isMounted) {
           setRole(null);
+          setPhone(null);
+          setMustChangePin(false);
           setStatus("signed-out");
         }
       }
@@ -92,21 +112,39 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setRole(null);
         setStatus("signed-out");
         setPendingRegistrationToken(null);
+        setPhone(null);
+        setMustChangePin(false);
       }
+    });
+    setOnPinChangeRequiredCallback(() => {
+      if (isMounted) setMustChangePin(true);
     });
 
     return () => {
       isMounted = false;
       setOnUnauthorizedCallback(null);
+      setOnPinChangeRequiredCallback(null);
     };
   }, [queryClient]);
 
   const signIn = useCallback(
     async (token: string, userRole?: AppRole) => {
       await setStoredToken(token);
-      setRole(userRole || "customer");
+      const me = await fetchMe(token);
+      if (me.registered === false) {
+        setPendingRegistrationToken(token);
+        setRole(null);
+        setPhone(me.phone || null);
+        setMustChangePin(false);
+        setStatus("signed-out");
+        return me;
+      }
+      setRole(me.role || userRole || "customer");
+      setPhone(me.profile?.phone || me.phone || null);
+      setMustChangePin(me.must_change_pin);
       setStatus("signed-in");
       setPendingRegistrationToken(null);
+      return me;
     },
     []
   );
@@ -114,21 +152,45 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signOut = useCallback(async () => {
     await setStoredToken(null);
     queryClient.clear();
+    const { error } = await supabase.auth.signOut();
     setRole(null);
+    setPhone(null);
+    setMustChangePin(false);
+    setPinChangeSuccess(false);
     setStatus("signed-out");
     setPendingRegistrationToken(null);
+    if (error) throw error;
   }, [queryClient]);
+
+  const showPinChangeSuccess = useCallback(() => {
+    setPinChangeSuccess(true);
+    setTimeout(() => setPinChangeSuccess(false), 3000);
+  }, []);
 
   const value = useMemo(
     () => ({
       role,
+      phone,
+      mustChangePin,
+      pinChangeSuccess,
+      showPinChangeSuccess,
       status,
       signOut,
       pendingRegistrationToken,
       setPendingRegistrationToken,
       signIn,
     }),
-    [role, status, signOut, pendingRegistrationToken, signIn]
+    [
+      role,
+      phone,
+      mustChangePin,
+      pinChangeSuccess,
+      showPinChangeSuccess,
+      status,
+      signOut,
+      pendingRegistrationToken,
+      signIn,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
