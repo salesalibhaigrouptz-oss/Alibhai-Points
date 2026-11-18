@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { supabase, publicSupabase } from "../../config/supabase.js";
+import { supabase } from "../../config/supabase.js";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/errors.js";
 import { phoneToLoginEmail } from "../../utils/phone.js";
@@ -42,49 +42,21 @@ export class ChangePinController {
         throw new AppError(400, "WEAK_PIN", "Choose a less predictable PIN.");
       }
 
-      const email = user.email || phoneToLoginEmail(profile.phone);
-      let authUser: any = null;
+      const { data: authData, error: authError } =
+        await supabase.auth.admin.getUserById(user.id);
 
-      // 1. Attempt verification via Supabase signInWithPassword if enabled
-      try {
-        const { data: authData, error: authError } =
-          await publicSupabase.auth.signInWithPassword({
-            email,
-            password: current_pin,
-          });
-
-        if (!authError && authData?.user) {
-          authUser = authData.user;
-        } else if (
-          authError &&
-          (authError.code === "invalid_credentials" ||
-            authError.message.toLowerCase().includes("invalid login credentials"))
-        ) {
-          throw new AppError(400, "INVALID_CURRENT_PIN", "Current PIN is incorrect.");
-        }
-      } catch (err) {
-        if (err instanceof AppError) throw err;
+      if (authError || !authData?.user) {
+        throw new AppError(502, "AUTH_VERIFICATION_FAILED", "Unable to verify current PIN.");
       }
 
-      // 2. Fallback to admin lookup & pin_hash verification if Supabase signInWithPassword is unavailable or email logins are disabled
-      if (!authUser) {
-        const { data: adminUserData, error: adminUserError } =
-          await supabase.auth.admin.getUserById(user.id);
-
-        if (adminUserError || !adminUserData?.user) {
-          throw new AppError(502, "AUTH_VERIFICATION_FAILED", "Unable to verify current PIN.");
-        }
-
-        const storedHash = adminUserData.user.user_metadata?.pin_hash;
-        if (!storedHash) {
-          if (current_pin !== "123456") {
-            throw new AppError(400, "INVALID_CURRENT_PIN", "Current PIN is incorrect.");
-          }
-        } else if (!verifyPin(current_pin, storedHash)) {
+      const authUser = authData.user;
+      const storedHash = authUser.user_metadata?.pin_hash;
+      if (!storedHash) {
+        if (current_pin !== "123456") {
           throw new AppError(400, "INVALID_CURRENT_PIN", "Current PIN is incorrect.");
         }
-
-        authUser = adminUserData.user;
+      } else if (!verifyPin(current_pin, storedHash)) {
+        throw new AppError(400, "INVALID_CURRENT_PIN", "Current PIN is incorrect.");
       }
 
       const { error: passwordError } = await supabase.auth.admin.updateUserById(

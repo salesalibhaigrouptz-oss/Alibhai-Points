@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { app } from "../src/app.js";
 import { publicSupabase, supabase } from "../src/config/supabase.js";
+import { hashPin } from "../src/utils/pin.js";
 
 const USER = {
   id: "pin-change-user",
@@ -103,12 +104,18 @@ describe("Mandatory PIN change", () => {
 
   it("allows a flagged user to change PIN, clears the flag, and unlocks customer routes", async () => {
     mockUser(true, USER.id);
-    vi.spyOn(publicSupabase.auth, "signInWithPassword").mockResolvedValue({
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
       data: {
-        user: { user_metadata: { role: "customer" } } as any,
-        session: null,
+        user: { ...USER, user_metadata: { pin_hash: hashPin("246810") } } as any,
       },
       error: null,
+    } as any);
+    vi.spyOn(publicSupabase.auth, "signInWithPassword").mockResolvedValue({
+      data: { user: null, session: null },
+      error: {
+        code: "invalid_credentials",
+        message: "Invalid login credentials",
+      } as any,
     } as any);
     const updateSpy = vi.spyOn(supabase.auth.admin, "updateUserById").mockResolvedValue({
       data: { user: {} as any },
@@ -162,10 +169,7 @@ describe("Mandatory PIN change", () => {
         user_metadata: expect.objectContaining({ pin_hash: expect.any(String) }),
       })
     );
-    expect(publicSupabase.auth.signInWithPassword).toHaveBeenCalledWith({
-      email: USER.email,
-      password: "246810",
-    });
+    expect(publicSupabase.auth.signInWithPassword).not.toHaveBeenCalled();
     expect(auditInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "PIN_CHANGED",
@@ -183,12 +187,11 @@ describe("Mandatory PIN change", () => {
 
   it("rejects an incorrect current PIN", async () => {
     mockUser(true);
-    vi.spyOn(publicSupabase.auth, "signInWithPassword").mockResolvedValue({
-      data: { user: null, session: null },
-      error: {
-        code: "invalid_credentials",
-        message: "Invalid login credentials",
-      } as any,
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
+      data: {
+        user: { ...USER, user_metadata: { pin_hash: hashPin("246810") } } as any,
+      },
+      error: null,
     });
 
     const response = await request(app)
@@ -220,7 +223,10 @@ describe("Mandatory PIN change", () => {
     ["zero PIN", "246810", "WEAK_PIN", "000000"],
   ])("rejects a %s", async (_label, currentPin, code, newPin = currentPin) => {
     mockUser(true, `${USER.id}-${newPin}-${++mockUserSequence}`);
-    vi.spyOn(publicSupabase.auth, "signInWithPassword");
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
+      data: { user: { ...USER, user_metadata: {} } as any },
+      error: null,
+    } as any);
     const response = await request(app)
       .post("/api/me/change-pin")
       .set(authHeader())
@@ -228,7 +234,7 @@ describe("Mandatory PIN change", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe(code);
-    expect(publicSupabase.auth.signInWithPassword).not.toHaveBeenCalled();
+    expect(supabase.auth.admin.getUserById).not.toHaveBeenCalled();
   });
 
   it("limits PIN-change attempts to five per user", async () => {
@@ -259,9 +265,9 @@ describe("Mandatory PIN change", () => {
       }
       return {} as any;
     });
-    vi.spyOn(publicSupabase.auth, "signInWithPassword").mockResolvedValue({
-      data: { user: null, session: null },
-      error: { code: "invalid_credentials", message: "Invalid login credentials" } as any,
+    vi.spyOn(supabase.auth.admin, "getUserById").mockResolvedValue({
+      data: { user: { ...uniqueUser, user_metadata: {} } as any },
+      error: null,
     });
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
