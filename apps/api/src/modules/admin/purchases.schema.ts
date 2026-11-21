@@ -10,10 +10,10 @@ export const previewPurchaseSchema = z.object({
     .number({ required_error: "purchase_amount is required" })
     .positive({ message: "purchase_amount must be greater than zero" })
     .max(1000000000, { message: "purchase_amount is too large" })
-    .refine((val) => Number.isInteger(val * 100), {
+    .refine((val) => Math.abs(val * 100 - Math.round(val * 100)) < 1e-6, {
       message: "purchase_amount can have at most 2 decimal places",
     }),
-}).strict();
+});
 
 export type PreviewPurchaseInput = z.infer<typeof previewPurchaseSchema>;
 
@@ -27,12 +27,15 @@ export const recordPurchaseSchema = z.object({
     .number({ required_error: "purchase_amount is required" })
     .positive({ message: "purchase_amount must be greater than zero" })
     .max(1000000000, { message: "purchase_amount is too large" })
-    .refine((val) => Number.isInteger(val * 100), {
+    .refine((val) => Math.abs(val * 100 - Math.round(val * 100)) < 1e-6, {
       message: "purchase_amount can have at most 2 decimal places",
     }),
   idempotency_key: z
     .string({ required_error: "idempotency_key is required" })
-    .uuid({ message: "idempotency_key must be a valid UUID" }),
-}).strict();
+    .min(1, { message: "idempotency_key cannot be empty" })
+    .max(255, { message: "idempotency_key is too long" })
+    .trim(),
+});
 
 export type RecordPurchaseInput = z.infer<typeof recordPurchaseSchema>;
+

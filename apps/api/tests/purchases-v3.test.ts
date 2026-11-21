@@ -260,7 +260,7 @@ describe("Admin Purchases API v3", () => {
       expect(res.body.data.tier_will_change).toBe(false);
     });
 
-    it("should reject invalid idempotency_key format in record", async () => {
+    it("should reject empty idempotency_key in record", async () => {
       vi.spyOn(supabase.auth, "getUser").mockResolvedValue({
         data: { user: ADMIN_USER as any },
         error: null,
@@ -283,7 +283,7 @@ describe("Admin Purchases API v3", () => {
       const res = await request(app)
         .post("/api/admin/purchases")
         .set("Authorization", "Bearer admin-token")
-        .send({ customer: "AG01", purchase_amount: 50000, idempotency_key: "not-a-uuid" });
+        .send({ customer: "AG01", purchase_amount: 50000, idempotency_key: "" });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);

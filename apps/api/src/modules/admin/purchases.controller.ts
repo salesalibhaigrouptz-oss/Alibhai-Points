@@ -131,6 +131,24 @@ export class AdminPurchasesController {
         throw new AppError(400, "PREVIEW_FAILED", "Failed to preview purchase");
       }
 
+      let tierBefore = result.tier_before || result.customer_tier || result.tier;
+      let tierAfter = result.tier_after;
+      if (!tierBefore) {
+        try {
+          const { data: custData } = await supabase
+            .from("customers")
+            .select("tier_id, loyalty_tiers(name)")
+            .eq("customer_code", customerCode)
+            .maybeSingle();
+          tierBefore = (custData as any)?.loyalty_tiers?.name || "Bronze";
+        } catch {
+          tierBefore = "Bronze";
+        }
+      }
+      if (!tierAfter) {
+        tierAfter = tierBefore;
+      }
+
       sendSuccess(res, {
         ...data,
         customer_name: result.customer_name,
@@ -138,6 +156,9 @@ export class AdminPurchasesController {
         points_earned: result.points_earned ?? result.points_to_earn,
         points_to_earn: result.points_to_earn ?? result.points_earned,
         amount_per_point: result.amount_per_point,
+        tier_before: tierBefore,
+        tier_after: tierAfter,
+        tier_will_change: result.tier_will_change ?? (tierBefore !== tierAfter),
       });
     } catch (error) {
       next(error);
@@ -197,6 +218,20 @@ export class AdminPurchasesController {
         throw new AppError(400, "PURCHASE_FAILED", "Failed to record purchase");
       }
 
+      let tierAfter = result.tier_after || result.customer_tier || result.tier;
+      if (!tierAfter) {
+        try {
+          const { data: custData } = await supabase
+            .from("customers")
+            .select("tier_id, loyalty_tiers(name)")
+            .eq("customer_code", customerCode)
+            .maybeSingle();
+          tierAfter = (custData as any)?.loyalty_tiers?.name || "Bronze";
+        } catch {
+          tierAfter = "Bronze";
+        }
+      }
+
       sendSuccess(res, {
         ...data,
         reference: result.transaction_reference || result.reference,
@@ -207,6 +242,7 @@ export class AdminPurchasesController {
         customer_status: result.customer_status,
         duplicate: result.duplicate ?? false,
         purchase_id: result.purchase_id,
+        tier_after: tierAfter,
       });
     } catch (error) {
       next(error);

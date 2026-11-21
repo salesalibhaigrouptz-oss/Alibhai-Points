@@ -547,7 +547,9 @@ paths:
                   maximum: 1000000000
                 idempotency_key:
                   type: string
-                  format: uuid
+                  minLength: 1
+                  maxLength: 255
+                  description: Unique key to prevent duplicate purchases (UUID or unique string)
       responses:
         '200':
           description: Purchase recorded

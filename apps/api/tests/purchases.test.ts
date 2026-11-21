@@ -388,7 +388,7 @@ describe("Admin Purchases API", () => {
       expect(res.body.error.code).toBe("NOT_ADMIN");
     });
 
-    it("should reject invalid UUID for idempotency_key (400 VALIDATION_ERROR)", async () => {
+    it("should reject empty idempotency_key (400 VALIDATION_ERROR)", async () => {
       mockAdminAuth();
 
       const res = await request(app)
@@ -397,11 +397,42 @@ describe("Admin Purchases API", () => {
         .send({
           customer: "IS01",
           purchase_amount: 50000,
-          idempotency_key: "not-a-uuid",
+          idempotency_key: "",
         });
 
       expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("should accept non-UUID string format for idempotency_key (e.g. mobile app format)", async () => {
+      mockAdminAuth();
+
+      vi.spyOn(supabase, "rpc").mockResolvedValue({
+        data: {
+          ok: true,
+          duplicate: false,
+          purchase_id: "p-uuid-custom",
+          transaction_reference: "TXN-261006-CUST01",
+          points_earned: 50,
+          points_balance: 50,
+          customer_status: "active",
+        },
+        error: null,
+      } as any);
+
+      const res = await request(app)
+        .post("/api/admin/purchases")
+        .set("Authorization", "Bearer admin-token")
+        .send({
+          customer: "IS01",
+          purchase_amount: 50000,
+          idempotency_key: "purchase-1795247375633-1fd6c799",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.points_earned).toBe(50);
     });
   });
 
