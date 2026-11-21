@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 import { supabase } from "../../config/supabase.js";
 import { AppError } from "../../utils/errors.js";
 import { sendSuccess } from "../../utils/response.js";
@@ -191,58 +192,281 @@ export class AdminPurchasesController {
       const { customer, purchase_amount, idempotency_key } = req.body;
       const customerCode = await resolveCustomerCode(customer, adminUser.id);
 
-      const { data, error } = await supabase.rpc("record_purchase", {
-        p_customer_code: customerCode,
-        p_amount: purchase_amount,
-        p_admin_id: adminUser.id,
-        p_idempotency_key: idempotency_key,
-      });
+      // Try calling RPC first (with p_customer_code, then p_identifier)
+      let rpcResult: any = null;
+      let rpcError: any = null;
 
-      if (error) {
-        throw new AppError(500, "RPC_ERROR", error.message);
+      try {
+        const { data, error } = await supabase.rpc("record_purchase", {
+          p_customer_code: customerCode,
+          p_amount: purchase_amount,
+          p_admin_id: adminUser.id,
+          p_idempotency_key: idempotency_key,
+        });
+        rpcResult = data;
+        rpcError = error;
+      } catch (e) {
+        rpcError = e;
       }
 
-      if (!data || typeof data !== "object") {
-        throw new AppError(500, "RPC_ERROR", "Unexpected response from record_purchase");
-      }
-
-      const result = data as any;
-
-      if (!result.ok) {
-        if (result.code === "CUSTOMER_NOT_FOUND") {
-          throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
-        }
-        if (result.code === "CUSTOMER_DISABLED") {
-          throw new AppError(403, "CUSTOMER_DISABLED", "Customer profile is deactivated");
-        }
-        throw new AppError(400, "PURCHASE_FAILED", "Failed to record purchase");
-      }
-
-      let tierAfter = result.tier_after || result.customer_tier || result.tier;
-      if (!tierAfter) {
+      if (rpcError && (rpcError.code === "PGRST202" || String(rpcError.message).includes("schema cache"))) {
         try {
-          const { data: custData } = await supabase
-            .from("customers")
-            .select("tier_id, loyalty_tiers(name)")
-            .eq("customer_code", customerCode)
-            .maybeSingle();
-          tierAfter = (custData as any)?.loyalty_tiers?.name || "Bronze";
-        } catch {
-          tierAfter = "Bronze";
+          const { data, error } = await supabase.rpc("record_purchase", {
+            p_identifier: customerCode,
+            p_amount: purchase_amount,
+            p_admin_id: adminUser.id,
+            p_idempotency_key: idempotency_key,
+          });
+          rpcResult = data;
+          rpcError = error;
+        } catch (e) {
+          rpcError = e;
         }
       }
+
+      // Check if RPC failed due to database missing function/extension error (e.g. gen_random_bytes or schema cache mismatch)
+      const isDbFunctionError =
+        rpcError &&
+        (rpcError.code === "PGRST202" ||
+         rpcError.code === "42883" ||
+         String(rpcError.message).includes("schema cache") ||
+         String(rpcError.message).includes("gen_random_bytes") ||
+         String(rpcError.message).includes("does not exist"));
+
+      if (rpcError && !isDbFunctionError) {
+        throw new AppError(500, "RPC_ERROR", rpcError.message);
+      }
+
+      if (rpcResult && typeof rpcResult === "object" && !isDbFunctionError) {
+        if (!rpcResult.ok) {
+          if (rpcResult.code === "CUSTOMER_NOT_FOUND") {
+            throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+          }
+          if (rpcResult.code === "CUSTOMER_DISABLED") {
+            throw new AppError(403, "CUSTOMER_DISABLED", "Customer profile is deactivated");
+          }
+          throw new AppError(400, "PURCHASE_FAILED", "Failed to record purchase");
+        }
+
+        let tierAfter = rpcResult.tier_after || rpcResult.customer_tier || rpcResult.tier;
+        if (!tierAfter) {
+          try {
+            const { data: custData } = await supabase
+              .from("customers")
+              .select("tier_id, loyalty_tiers(name)")
+              .eq("customer_code", customerCode)
+              .maybeSingle();
+            tierAfter = (custData as any)?.loyalty_tiers?.name || "Bronze";
+          } catch {
+            tierAfter = "Bronze";
+          }
+        }
+
+        sendSuccess(res, {
+          ...rpcResult,
+          reference: rpcResult.transaction_reference || rpcResult.reference,
+          transaction_reference: rpcResult.transaction_reference || rpcResult.reference,
+          points_earned: rpcResult.points_earned,
+          new_balance: rpcResult.points_balance ?? rpcResult.new_balance,
+          points_balance: rpcResult.points_balance ?? rpcResult.new_balance,
+          customer_status: rpcResult.customer_status,
+          duplicate: rpcResult.duplicate ?? false,
+          purchase_id: rpcResult.purchase_id,
+          tier_after: tierAfter,
+        });
+        return;
+      }
+
+      // Fallback: If RPC failed due to database function/extension issues (e.g. gen_random_bytes missing in DB),
+      // perform the purchase recording directly using the Supabase client
+      if (idempotency_key) {
+        const { data: existing } = await supabase
+          .from("purchases")
+          .select("id, transaction_reference, points_earned, customer_id")
+          .eq("idempotency_key", idempotency_key)
+          .maybeSingle();
+
+        if (existing) {
+          const { data: cust } = await supabase
+            .from("customers")
+            .select("points_balance, status, tier_id, loyalty_tiers(name)")
+            .eq("id", existing.customer_id)
+            .maybeSingle();
+
+          sendSuccess(res, {
+            ok: true,
+            reference: existing.transaction_reference,
+            transaction_reference: existing.transaction_reference,
+            points_earned: existing.points_earned,
+            new_balance: cust?.points_balance ?? 0,
+            points_balance: cust?.points_balance ?? 0,
+            customer_status: cust?.status ?? "active",
+            duplicate: true,
+            purchase_id: existing.id,
+            tier_after: (cust as any)?.loyalty_tiers?.name || "Bronze",
+          });
+          return;
+        }
+      }
+
+      let { data: customerData } = await supabase
+        .from("customers")
+        .select("id, profile_id, customer_code, status, points_balance, lifetime_purchase_total, tier_id")
+        .eq("customer_code", customerCode)
+        .maybeSingle();
+
+      if (!customerData) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("phone", customerCode)
+          .maybeSingle();
+
+        if (prof?.id) {
+          const { data: custByProf } = await supabase
+            .from("customers")
+            .select("id, profile_id, customer_code, status, points_balance, lifetime_purchase_total, tier_id")
+            .eq("profile_id", prof.id)
+            .maybeSingle();
+          customerData = custByProf;
+        }
+      }
+
+      if (!customerData) {
+        throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer not found");
+      }
+
+      const { data: profData } = await supabase
+        .from("profiles")
+        .select("is_active")
+        .eq("id", customerData.profile_id)
+        .maybeSingle();
+
+      if (!profData || !profData.is_active) {
+        throw new AppError(403, "CUSTOMER_DISABLED", "Customer profile is deactivated");
+      }
+
+      const { data: rule } = await supabase
+        .from("point_rules")
+        .select("*")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!rule) {
+        throw new AppError(500, "NO_ACTIVE_RULE", "No active point rule found");
+      }
+
+      try {
+        await supabase.rpc("apply_inactivity_if_due", { p_customer_id: customerData.id });
+      } catch {}
+
+      const pointsEarned = Math.floor(purchase_amount / rule.amount_per_point);
+      const now = new Date();
+      const yymmdd = now.toISOString().slice(2, 10).replace(/-/g, "");
+      const randomSuffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+      const reference = `TXN-${yymmdd}-${randomSuffix}`;
+
+      const { data: purchase, error: purchaseErr } = await supabase
+        .from("purchases")
+        .insert({
+          customer_id: customerData.id,
+          point_rule_id: rule.id,
+          purchase_amount: purchase_amount,
+          amount_per_point_used: rule.amount_per_point,
+          points_earned: pointsEarned,
+          recorded_by: adminUser.id,
+          transaction_reference: reference,
+          idempotency_key: idempotency_key,
+          purchased_at: now.toISOString(),
+          status: "completed",
+        })
+        .select("id")
+        .single();
+
+      if (purchaseErr || !purchase) {
+        throw new AppError(500, "PURCHASE_FAILED", purchaseErr?.message || "Failed to record purchase");
+      }
+
+      if (pointsEarned > 0) {
+        const waitDays = rule.redemption_wait_days || 0;
+        const redeemableAt = new Date(now.getTime() + waitDays * 86400000);
+        await supabase.from("point_lots").insert({
+          customer_id: customerData.id,
+          purchase_id: purchase.id,
+          points_earned: pointsEarned,
+          points_remaining: pointsEarned,
+          earned_at: now.toISOString(),
+          redeemable_at: redeemableAt.toISOString(),
+        });
+      }
+
+      if (customerData.status === "inactive") {
+        await supabase.from("customer_status_events").insert({
+          customer_id: customerData.id,
+          previous_status: "inactive",
+          new_status: "active",
+          reason: "New purchase",
+          created_at: now.toISOString(),
+        });
+      }
+
+      const newBalance = (customerData.points_balance || 0) + pointsEarned;
+      const newLifetime = Number(customerData.lifetime_purchase_total || 0) + purchase_amount;
+
+      let newTierId = customerData.tier_id;
+      try {
+        const { data: tiers } = await supabase
+          .from("loyalty_tiers")
+          .select("id, name, min_lifetime_purchases")
+          .lte("min_lifetime_purchases", newLifetime)
+          .order("min_lifetime_purchases", { ascending: false })
+          .limit(1);
+
+        if (tiers && tiers[0]?.id) {
+          newTierId = tiers[0].id;
+        }
+      } catch {}
+
+      const { data: updatedCustomer } = await supabase
+        .from("customers")
+        .update({
+          last_transaction_at: now.toISOString(),
+          status: "active",
+          points_balance: newBalance,
+          lifetime_purchase_total: newLifetime,
+          tier_id: newTierId,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", customerData.id)
+        .select("points_balance, status, tier_id, loyalty_tiers(name)")
+        .single();
+
+      try {
+        await supabase.from("admin_audit_logs").insert({
+          admin_id: adminUser.id,
+          action: "PURCHASE_RECORDED",
+          entity_type: "purchase",
+          entity_id: purchase.id,
+          description: `Purchase for ${customerData.customer_code}`,
+          metadata: {
+            amount: purchase_amount,
+            points: pointsEarned,
+            reference: reference,
+          },
+        });
+      } catch {}
 
       sendSuccess(res, {
-        ...data,
-        reference: result.transaction_reference || result.reference,
-        transaction_reference: result.transaction_reference || result.reference,
-        points_earned: result.points_earned,
-        new_balance: result.points_balance ?? result.new_balance,
-        points_balance: result.points_balance ?? result.new_balance,
-        customer_status: result.customer_status,
-        duplicate: result.duplicate ?? false,
-        purchase_id: result.purchase_id,
-        tier_after: tierAfter,
+        ok: true,
+        reference,
+        transaction_reference: reference,
+        points_earned: pointsEarned,
+        new_balance: newBalance,
+        points_balance: newBalance,
+        customer_status: "active",
+        duplicate: false,
+        purchase_id: purchase.id,
+        tier_after: (updatedCustomer as any)?.loyalty_tiers?.name || "Bronze",
       });
     } catch (error) {
       next(error);
